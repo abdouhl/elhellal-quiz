@@ -1,0 +1,25 @@
+{
+  "name": "elhellal-quiz",
+  "version": "0.1.0",
+  "description": "اختبار لا ينتهي - endless Arabic quiz, a sibling site to elhellal.com",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "build-questions": "node scripts/build-questions.mjs"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.6.12",
+    "@astrojs/sitemap": "^3.7.0",
+    "astro": "^5.17.2"
+  },
+  "devDependencies": {
+    "@new-ui/foundations": "^0.3.4",
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "wrangler": "^4.67.0"
+  }
+}
