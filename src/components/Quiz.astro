@@ -1,0 +1,288 @@
+---
+import { CATEGORY_ICONS, CATEGORY_LABELS, questionById } from "../game/engine";
+
+export interface Props {
+    /** Start on this fixed question (used by /q/[id]); otherwise start on a random one. */
+    initialId?: string;
+}
+
+const { initialId } = Astro.props;
+const initial = initialId ? questionById(initialId) : null;
+---
+
+<main id="main-content" class="app">
+    <div class="topbar" aria-live="polite">
+        <span id="best" class="chip" title="الأفضل">★ ٥٠٠</span>
+        <span id="stat" class="chip chip-n" title="النتيجة">٥٠٠</span>
+    </div>
+
+    <section id="card" class="card">
+        <p id="q-cat" class="q-cat">{initial && `${CATEGORY_ICONS[initial.category]} ${CATEGORY_LABELS[initial.category]}`}</p>
+        <h1 id="q-text" class={initial?.isQuote ? "q-text is-quote" : "q-text"} data-id={initial ? initialId : undefined}>
+            {initial ? initial.text : "جارٍ التحميل…"}
+        </h1>
+    </section>
+
+    <div id="opts" class="opts" role="group" aria-label="الخيارات">
+        {
+            initial?.options.map((text, i) => (
+                <button type="button" class="opt" data-i={i}>
+                    {text}
+                </button>
+            ))
+        }
+    </div>
+
+    <div class="foot">
+        <p id="feedback" class="feedback" role="status"></p>
+        <button type="button" id="next" class="next" hidden>التالي ←</button>
+    </div>
+
+    <p class="hint">اضغط ١ – ٤ للإجابة، وEnter للسؤال التالي.</p>
+    <noscript><p class="noscript">هذه اللعبة تحتاج إلى تفعيل جافاسكربت.</p></noscript>
+</main>
+
+<script>
+    import { CATEGORY_ICONS, CATEGORY_LABELS, createDeck, pointsFor, questionById } from "../game/engine";
+    import type { Question } from "../game/engine";
+
+    const START_SCORE = 500;
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+    const el = {
+        stat: $("stat"),
+        best: $("best"),
+        qCat: $("q-cat"),
+        qText: $("q-text"),
+        opts: $("opts"),
+        card: $("card"),
+        feedback: $("feedback"),
+        next: $<HTMLButtonElement>("next"),
+    };
+
+    // localStorage can throw (private windows, blocked storage) — the quiz must work without it.
+    const store = {
+        get(key: string): string | null {
+            try {
+                return localStorage.getItem(key);
+            } catch {
+                return null;
+            }
+        },
+        set(key: string, value: string) {
+            try {
+                localStorage.setItem(key, value);
+            } catch {}
+        },
+    };
+
+    const ar = (n: number) => String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
+
+    // The score carries across pages, so a visitor arriving from a pin keeps it when they continue.
+    let score = Number(store.get("quiz.score")) || START_SCORE;
+    let best = Math.max(Number(store.get("quiz.best")) || 0, score);
+    let streak = 0;
+    const deck = createDeck("all");
+    let question: Question | null = null;
+    let locked = false;
+    let advanceTimer: number | undefined;
+
+    function renderStats() {
+        el.stat.textContent = ar(score);
+        el.best.textContent = `★ ${ar(best)}`;
+    }
+
+    function renderQuestion(q: Question) {
+        question = q;
+        locked = false;
+        el.qCat.textContent = `${CATEGORY_ICONS[q.category]} ${CATEGORY_LABELS[q.category]}`;
+        el.qText.textContent = q.text;
+        el.qText.classList.toggle("is-quote", q.isQuote);
+        el.opts.replaceChildren(
+            ...q.options.map((text, i) => {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "opt";
+                b.dataset.i = String(i);
+                b.textContent = text;
+                return b;
+            }),
+        );
+        el.feedback.textContent = "";
+        el.feedback.className = "feedback";
+        el.next.hidden = true;
+        el.card.classList.remove("card-in");
+        void el.card.offsetWidth;
+        el.card.classList.add("card-in");
+    }
+
+    function nextQuestion() {
+        clearTimeout(advanceTimer);
+        renderQuestion(deck.next());
+        renderStats();
+    }
+
+    function answer(i: number) {
+        if (locked || !question) return;
+        locked = true;
+        const q = question;
+        const buttons = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")];
+        buttons.forEach((b) => (b.disabled = true));
+        buttons[q.answer].classList.add("right");
+
+        if (i === q.answer) {
+            streak++;
+            const pts = pointsFor(streak);
+            score += pts;
+            store.set("quiz.score", String(score));
+            if (score > best) {
+                best = score;
+                store.set("quiz.best", String(best));
+            }
+            let msg = `إجابة صحيحة! +${ar(pts)}`;
+            if (streak >= 3) msg += ` 🔥 ${ar(streak)} متتالية`;
+            el.feedback.textContent = msg;
+            el.feedback.className = "feedback ok";
+            renderStats();
+            advanceTimer = window.setTimeout(nextQuestion, 900);
+            return;
+        }
+
+        buttons[i].classList.add("wrong");
+        streak = 0;
+        el.feedback.textContent = `الإجابة الصحيحة: ${q.options[q.answer]}`;
+        el.feedback.className = "feedback bad";
+        el.next.hidden = false;
+        el.next.focus();
+        renderStats();
+    }
+
+    el.next.addEventListener("click", nextQuestion);
+    el.opts.addEventListener("click", (e) => {
+        const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".opt");
+        if (b && !b.disabled) answer(Number(b.dataset.i));
+    });
+    document.addEventListener("keydown", (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const idx = e.key.length === 1 ? Math.max("1234".indexOf(e.key), "١٢٣٤".indexOf(e.key)) : -1;
+        if (idx >= 0) {
+            const b = el.opts.children[idx] as HTMLButtonElement | undefined;
+            if (b && !b.disabled) answer(idx);
+        } else if (e.key === "Enter" && !el.next.hidden && document.activeElement !== el.next) el.next.click();
+    });
+
+    // A pinned question (already rendered server-side with the same seeded options) or a random start.
+    const startId = el.qText.dataset.id;
+    const first = (startId && questionById(startId)) || null;
+    if (first) {
+        renderQuestion(first);
+        renderStats();
+    } else nextQuestion();
+</script>
+
+<style is:global>
+    :root {
+        --page: #476b6b;
+        --tile: #375656;
+        --tile-hover: #2f4b4b;
+        --chip: #375656;
+        --right: #3f9e72;
+        --wrong: #b84a4a;
+    }
+
+    [hidden] { display: none !important; }
+    button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+    button:disabled { cursor: default; }
+
+    .app {
+        display: flex;
+        flex-direction: column;
+        box-sizing: border-box;
+        min-height: calc(100svh - 48px);
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 20px 16px 0;
+    }
+
+    /* Mode + score chips, pinned to the inline-end corner like the reference. */
+    .topbar { display: flex; justify-content: flex-start; gap: 8px; }
+    .chip {
+        padding: 6px 12px;
+        border: 0;
+        border-radius: 2px;
+        background: var(--chip);
+        color: #fff;
+        font-family: var(--body-strong);
+        font-size: 1.05rem;
+        line-height: 1.4;
+    }
+    .chip-btn { cursor: pointer; }
+    .chip-btn:hover { background: var(--tile-hover); }
+    .chip-n { font-variant-numeric: tabular-nums; min-width: 2.2ch; text-align: center; }
+
+    .card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 0; text-align: center; }
+    .card-in { animation: fade-up 0.3s ease both; }
+    .q-cat { margin: 0 0 12px; font-size: 0.9rem; color: rgba(255, 255, 255, 0.6); }
+    .q-text {
+        margin: 0;
+        max-width: 24em;
+        font-family: var(--body-copy);
+        font-weight: normal;
+        font-size: 2.6rem;
+        line-height: 1.6;
+        color: #fff;
+        text-wrap: balance;
+    }
+    .q-text.is-quote { max-width: 30em; font-size: 1.7rem; line-height: 1.8; }
+
+    .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 8px; }
+    .opt {
+        min-height: 140px;
+        padding: 16px 20px;
+        border: 0;
+        border-radius: 0;
+        background: var(--tile);
+        color: #fff;
+        font-family: var(--body-strong);
+        font-size: 2rem;
+        line-height: 1.4;
+        text-align: center;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .opt:hover:not(:disabled) { background: var(--tile-hover); }
+    .opt:disabled { color: rgba(255, 255, 255, 0.55); }
+    .opt.right { background: var(--right); color: #fff; }
+    .opt.wrong { background: var(--wrong); color: #fff; }
+
+    .foot { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 64px; margin-top: 8px; }
+    .feedback { margin: 0; color: #fff; }
+    .feedback.ok { color: #b8f0d4; }
+    .feedback.bad { color: #ffd0d0; }
+    .next {
+        flex: none;
+        padding: 8px 24px;
+        border: 0;
+        border-radius: 2px;
+        background: var(--tile);
+        color: #fff;
+        cursor: pointer;
+        font-family: var(--body-strong);
+    }
+    .next:hover { background: var(--tile-hover); }
+    .hint { margin: 0 0 12px; text-align: center; font-size: 0.8rem; color: rgba(255, 255, 255, 0.55); }
+    .noscript { text-align: center; color: #fff; }
+
+    :is(.chip-btn, .opt, .next):focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+    @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+    @media (max-width: 640px) {
+        .q-text { font-size: 1.7rem; }
+        .q-text.is-quote { font-size: 1.3rem; }
+        .opts { grid-template-columns: 1fr; gap: 12px; }
+        .opt { min-height: 72px; font-size: 1.35rem; }
+    }
+</style>

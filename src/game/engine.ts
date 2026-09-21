@@ -25,6 +25,16 @@ export const CATEGORY_LABELS: Record<Category, string> = {
     quote: "من قال؟",
 };
 
+export const CATEGORY_ICONS: Record<Category, string> = {
+    geo: "🌍",
+    sci: "🔬",
+    hist: "🏛️",
+    gen: "💡",
+    lang: "✍️",
+    lit: "📚",
+    quote: "💬",
+};
+
 type Source =
     | { kind: "bank"; i: number }
     | { kind: "quote"; i: number }
@@ -47,6 +57,23 @@ books.forEach((_, i) => {
 });
 
 export const CATEGORIES = Object.keys(pools) as Category[];
+
+/** Deterministic PRNG (mulberry32) seeded from a string, so a question id always yields the same options. */
+function seeded(seed: string): () => number {
+    let h = 1779033703 ^ seed.length;
+    for (let i = 0; i < seed.length; i++) {
+        h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+        h = (h << 13) | (h >>> 19);
+    }
+    let a = h >>> 0;
+    return () => {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
 
 export function shuffle<T>(arr: readonly T[], rand = Math.random): T[] {
     const a = [...arr];
@@ -104,6 +131,30 @@ function build(category: Category, src: Source, rand: () => number): Question {
     }
 }
 
+/** Every fixed question, as `[id, category]`. Ids are stable: `b3`, `q12`, `ba7`, `ab7`. */
+export function allQuestionIds(): [string, Category][] {
+    const ids: [string, Category][] = [];
+    (bank as [Category, string, string, string[]][]).forEach(([c], i) => ids.push([`b${i}`, c]));
+    quotes.forEach((_, i) => ids.push([`q${i}`, "quote"]));
+    books.forEach((_, i) => {
+        ids.push([`ba${i}`, "lit"]);
+        ids.push([`ab${i}`, "lit"]);
+    });
+    return ids;
+}
+
+/** Rebuilds a question from its id with seeded distractors/order — identical on every call, server or client. */
+export function questionById(id: string): Question | null {
+    const m = /^(b|q|ba|ab)(\d+)$/.exec(id);
+    if (!m) return null;
+    const i = Number(m[2]);
+    const kind = ({ b: "bank", q: "quote", ba: "book-author", ab: "author-book" } as const)[m[1] as "b" | "q" | "ba" | "ab"];
+    const size = kind === "bank" ? bank.length : kind === "quote" ? quotes.length : books.length;
+    if (i >= size) return null;
+    const category: Category = kind === "quote" ? "quote" : kind === "bank" ? (bank as [Category, ...unknown[]][])[i][0] : "lit";
+    return build(category, { kind, i }, seeded(id));
+}
+
 /**
  * Endless question stream. Picks a random enabled category, then a random question in it
  * that hasn't been shown yet; once a category is exhausted it starts over.
@@ -133,7 +184,12 @@ export function createDeck(filter: CategoryFilter, rand: () => number = Math.ran
     };
 }
 
-/** Points for a correct answer: base 10 plus a streak bonus that caps at +10. */
-export function pointsFor(streakAfter: number): number {
-    return 10 + Math.min(streakAfter - 1, 10);
+/** Seconds allowed to answer: long questions and quotes get more time. */
+export function timeLimitFor(q: Question): number {
+    return q.isQuote || q.text.length > 80 ? 20 : 15;
+}
+
+/** Points for a correct answer: base 10, a streak bonus that caps at +10, and up to +5 for speed. */
+export function pointsFor(streakAfter: number, timeFraction = 0): number {
+    return 10 + Math.min(streakAfter - 1, 10) + Math.round(5 * Math.max(0, Math.min(1, timeFraction)));
 }

@@ -1,0 +1,22 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Quiz from "../../components/Quiz.astro";
+import { allQuestionIds, questionById } from "../../game/engine";
+
+export function getStaticPaths() {
+    return allQuestionIds().map(([id]) => ({ params: { id } }));
+}
+
+const { id } = Astro.params;
+const q = questionById(id!)!;
+const title = q.isQuote ? `من قال: «${q.text}»؟` : q.text;
+---
+
+<Layout
+    pageTitle={`${title} — اختبار الهلال`}
+    pageDescription="جرّب حظك في هذا السؤال ثم تابع اختبار الهلال بأسئلة لا تنتهي. ابدأ بـ٥٠٠ نقطة."
+    canonicalUrl={`https://quiz.elhellal.com/q/${id}`}
+    noindex
+>
+    <Quiz initialId={id} />
+</Layout>
