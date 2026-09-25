@@ -193,3 +193,37 @@ export function timeLimitFor(q: Question): number {
 export function pointsFor(streakAfter: number, timeFraction = 0): number {
     return 10 + Math.min(streakAfter - 1, 10) + Math.round(5 * Math.max(0, Math.min(1, timeFraction)));
 }
+
+/** The daily challenge's first day; day numbers (`#1`, `#2`, …) count from here. */
+const DAILY_EPOCH = Date.UTC(2026, 8, 25);
+export const DAILY_SIZE = 10;
+
+/** `YYYY-MM-DD` for the player's local calendar day. */
+export function dayKey(d = new Date()): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function dayNumber(key: string): number {
+    const [y, m, d] = key.split("-").map(Number);
+    return Math.round((Date.UTC(y, m - 1, d) - DAILY_EPOCH) / 86_400_000) + 1;
+}
+
+/**
+ * The day's shared question set: the same ids for everyone on that date, at most two per
+ * category, and never both questions about the same book.
+ */
+export function dailyIds(key: string): string[] {
+    const perCategory = new Map<Category, number>();
+    const books = new Set<string>();
+    const ids: string[] = [];
+    for (const [id, c] of shuffle(allQuestionIds(), seeded(`daily:${key}`))) {
+        if ((perCategory.get(c) ?? 0) >= 2) continue;
+        const book = /^(?:ba|ab)(\d+)$/.exec(id)?.[1];
+        if (book && books.has(book)) continue;
+        if (book) books.add(book);
+        perCategory.set(c, (perCategory.get(c) ?? 0) + 1);
+        ids.push(id);
+        if (ids.length === DAILY_SIZE) break;
+    }
+    return ids;
+}

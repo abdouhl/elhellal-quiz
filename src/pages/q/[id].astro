@@ -14,8 +14,9 @@ const title = q.isQuote ? `من قال: «${q.text}»؟` : q.text;
 
 <Layout
     pageTitle={`${title} — اختبار الهلال`}
-    pageDescription="جرّب حظك في هذا السؤال ثم تابع اختبار الهلال بأسئلة لا تنتهي. ابدأ بـ٥٠٠ نقطة."
+    pageDescription="هل تعرف الإجابة؟ جرّب هذا السؤال ثم تابع اختبار الهلال بأسئلة لا تنتهي."
     canonicalUrl={`https://quiz.elhellal.com/q/${id}`}
+    ogImage={`https://quiz.elhellal.com/og/${id}.png`}
     noindex
 >
     <Quiz initialId={id} />

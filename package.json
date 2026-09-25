@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "build": "astro build",
+    "build": "astro build && bun scripts/build-og.ts",
     "preview": "astro preview",
     "astro": "astro",
     "build-questions": "node scripts/build-questions.mjs"
@@ -18,8 +18,11 @@
     "astro": "^5.17.2"
   },
   "devDependencies": {
-    "@new-ui/foundations": "^0.3.4",
     "@cloudflare/workers-types": "^4.20260702.1",
+    "@ibm/plex-sans-arabic": "^1.1.0",
+    "@new-ui/foundations": "^0.3.4",
+    "@resvg/resvg-js": "^2.6.2",
+    "wawoff2": "^2.0.1",
     "wrangler": "^4.67.0"
   }
 }

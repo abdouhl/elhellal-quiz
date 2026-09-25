@@ -35,7 +35,11 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
     <meta property="og:description" content={pageDescription} />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="ar_AR" />
+    {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
     {ogImage && <meta property="og:image" content={ogImage} />}
+    {ogImage && <meta property="og:image:width" content="1200" />}
+    {ogImage && <meta property="og:image:height" content="630" />}
+    {ogImage && <meta name="twitter:image" content={ogImage} />}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@abdou_hll" />
     <!-- Google AdSense (same publisher account as elhellal.com) -->

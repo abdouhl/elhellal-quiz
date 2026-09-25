@@ -1,5 +1,6 @@
 ---
 import { CATEGORY_ICONS, CATEGORY_LABELS, questionById } from "../game/engine";
+import "../styles/quiz.css";
 
 export interface Props {
     /** Start on this fixed question (used by /q/[id]); otherwise start on a random one. */
@@ -14,6 +15,10 @@ const initial = initialId ? questionById(initialId) : null;
     <div class="topbar" aria-live="polite">
         <span id="best" class="chip" title="الأفضل">★ ٥٠٠</span>
         <span id="stat" class="chip chip-n" title="النتيجة">٥٠٠</span>
+        <span class="topbar-end">
+            <a class="chip chip-btn" href="/daily/">📅 تحدي اليوم</a>
+            <button type="button" id="share" class="chip chip-btn">تحدَّ صديقًا ↗</button>
+        </span>
     </div>
 
     <section id="card" class="card">
@@ -35,8 +40,10 @@ const initial = initialId ? questionById(initialId) : null;
 
     <div class="foot">
         <p id="feedback" class="feedback" role="status"></p>
+        <button type="button" id="brag" class="brag" hidden>شارك سلسلتك 🔥</button>
         <a id="next" class="next" href="/" hidden>التالي ←</a>
     </div>
+    <p id="crowd" class="crowd"></p>
 
     <p class="hint">اضغط ١ – ٤ للإجابة، وEnter للسؤال التالي.</p>
     <noscript><p class="noscript">هذه اللعبة تحتاج إلى تفعيل جافاسكربت.</p></noscript>
@@ -45,6 +52,8 @@ const initial = initialId ? questionById(initialId) : null;
 <script>
     import { CATEGORY_ICONS, CATEGORY_LABELS, createDeck, pointsFor, questionById } from "../game/engine";
     import type { Question } from "../game/engine";
+    import { SITE, ar, crowdLine, crowdPercent, recordAnswer, shareWithFeedback, store } from "../game/client";
+    import type { Crowd } from "../game/client";
 
     const START_SCORE = 500;
     const WRONG_PENALTY = 10;
@@ -62,25 +71,10 @@ const initial = initialId ? questionById(initialId) : null;
         card: $("card"),
         feedback: $("feedback"),
         next: $<HTMLAnchorElement>("next"),
+        crowd: $("crowd"),
+        share: $("share"),
+        brag: $("brag"),
     };
-
-    // localStorage can throw (private windows, blocked storage) — the quiz must work without it.
-    const store = {
-        get(key: string): string | null {
-            try {
-                return localStorage.getItem(key);
-            } catch {
-                return null;
-            }
-        },
-        set(key: string, value: string) {
-            try {
-                localStorage.setItem(key, value);
-            } catch {}
-        },
-    };
-
-    const ar = (n: number) => String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
 
     // The score carries across pages, so a visitor arriving from a pin keeps it when they continue.
     const savedScore = store.get("quiz.score");
@@ -95,6 +89,10 @@ const initial = initialId ? questionById(initialId) : null;
     let question: Question | null = null;
     let locked = false;
     let advanceTimer: number | undefined;
+    /** Crowd totals for the question on screen, once it has been answered. */
+    let crowd: Crowd | null = null;
+    /** The streak the last wrong answer ended, offered as a brag. */
+    let lostStreak = 0;
 
     function renderStats() {
         el.stat.textContent = ar(score);
@@ -121,6 +119,9 @@ const initial = initialId ? questionById(initialId) : null;
         el.feedback.className = "feedback";
         el.next.hidden = true;
         el.next.href = "/";
+        el.crowd.textContent = "";
+        el.brag.hidden = true;
+        crowd = null;
         pageTurn = false;
         el.card.classList.remove("card-in");
         void el.card.offsetWidth;
@@ -150,6 +151,11 @@ const initial = initialId ? questionById(initialId) : null;
         const buttons = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")];
         buttons.forEach((b) => (b.disabled = true));
         buttons[q.answer].classList.add("right");
+        recordAnswer(q.id, i === q.answer).then((c) => {
+            if (question !== q) return;
+            crowd = c;
+            el.crowd.textContent = crowdLine(c);
+        });
 
         if (i === q.answer) {
             streak++;
@@ -167,11 +173,13 @@ const initial = initialId ? questionById(initialId) : null;
             el.feedback.className = "feedback ok";
             renderStats();
             if (adDue()) showNext();
-            else advanceTimer = window.setTimeout(nextQuestion, 900);
+            else advanceTimer = window.setTimeout(nextQuestion, 1300);
             return;
         }
 
         buttons[i].classList.add("wrong");
+        lostStreak = streak;
+        el.brag.hidden = lostStreak < 3;
         streak = 0;
         store.set("quiz.streak", "0");
         const lost = Math.min(WRONG_PENALTY, score);
@@ -192,6 +200,17 @@ const initial = initialId ? questionById(initialId) : null;
         e.preventDefault();
         nextQuestion();
     });
+    el.share.addEventListener("click", () => {
+        const q = question;
+        if (!q) return;
+        const pct = crowdPercent(crowd);
+        const hook = pct !== null && pct <= 50 ? `${ar(pct)}٪ فقط أجابوا بشكل صحيح. هل تعرف الإجابة؟` : "هل تعرف الإجابة؟ 🤔";
+        const text = q.isQuote ? `من قال: «${q.text}»؟` : q.text;
+        shareWithFeedback(`${text}\n\n${hook}`, `${SITE}/q/${q.id}`);
+    });
+    el.brag.addEventListener("click", () =>
+        shareWithFeedback(`حققت ${ar(lostStreak)} إجابات صحيحة متتالية 🔥 في اختبار الهلال. هل تتفوق عليّ؟`, `${SITE}/`),
+    );
     el.opts.addEventListener("click", (e) => {
         const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".opt");
         if (b && !b.disabled) answer(Number(b.dataset.i));
@@ -213,116 +232,3 @@ const initial = initialId ? questionById(initialId) : null;
         renderStats();
     } else nextQuestion();
 </script>
-
-<style is:global>
-    :root {
-        --page: var(--black);
-        --tile: var(--grey10);
-        --tile-hover: var(--grey9);
-        --tile-border: var(--grey8);
-        --chip: var(--grey10);
-        --accent: DarkOrange;
-        --accent-hover: #ffa333;
-        --ink: var(--grey1);
-        --ink-muted: var(--grey4);
-        --right: #2f9e6a;
-        --wrong: #c0453f;
-    }
-
-    [hidden] { display: none !important; }
-    button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
-    button:disabled { cursor: default; }
-
-    .app {
-        display: flex;
-        flex-direction: column;
-        box-sizing: border-box;
-        min-height: calc(100svh - 48px);
-        max-width: 1000px;
-        margin: 0 auto;
-        padding: 20px 16px 0;
-    }
-
-    /* Mode + score chips, pinned to the inline-end corner like the reference. */
-    .topbar { display: flex; justify-content: flex-start; gap: 8px; }
-    .chip {
-        padding: 6px 12px;
-        border: 1px solid var(--tile-border);
-        border-radius: 2px;
-        background: var(--chip);
-        color: var(--ink);
-        font-family: var(--body-strong);
-        font-size: 1.05rem;
-        line-height: 1.4;
-    }
-    .chip-btn { cursor: pointer; }
-    .chip-btn:hover { background: var(--tile-hover); border-color: var(--accent); }
-    .chip-n { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 2.2ch; text-align: center; }
-
-    .card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 0; text-align: center; }
-    .card-in { animation: fade-up 0.3s ease both; }
-    .q-cat { margin: 0 0 12px; font-size: 0.9rem; color: var(--ink-muted); }
-    .q-text {
-        margin: 0;
-        max-width: 24em;
-        font-family: var(--body-copy);
-        font-weight: normal;
-        font-size: 2.6rem;
-        line-height: 1.6;
-        color: var(--ink);
-        text-wrap: balance;
-    }
-    .q-text.is-quote { max-width: 30em; font-size: 1.7rem; line-height: 1.8; }
-
-    .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 8px; }
-    .opt {
-        min-height: 140px;
-        padding: 16px 20px;
-        border: 1px solid var(--tile-border);
-        border-radius: 0;
-        background: var(--tile);
-        color: var(--ink);
-        font-family: var(--body-strong);
-        font-size: 2rem;
-        line-height: 1.4;
-        text-align: center;
-        cursor: pointer;
-        transition: background 0.15s, border-color 0.15s, color 0.15s;
-    }
-    .opt:hover:not(:disabled) { background: var(--tile-hover); border-color: var(--accent); color: var(--accent); }
-    .opt:disabled { color: var(--ink-muted); }
-    .opt.right { background: var(--right); border-color: var(--right); color: #fff; }
-    .opt.wrong { background: var(--wrong); border-color: var(--wrong); color: #fff; }
-
-    .foot { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 64px; margin-top: 8px; }
-    .feedback { margin: 0; color: var(--ink); }
-    .feedback.ok { color: #b8f0d4; }
-    .feedback.bad { color: #ffd0d0; }
-    .next {
-        flex: none;
-        padding: 8px 24px;
-        border: 0;
-        border-radius: 2px;
-        background: var(--accent);
-        color: var(--black);
-        cursor: pointer;
-        font-family: var(--body-strong);
-        text-decoration: none;
-    }
-    .next:hover { background: var(--accent-hover); }
-    .hint { margin: 0 0 12px; text-align: center; font-size: 0.8rem; color: var(--ink-muted); }
-    .noscript { text-align: center; color: var(--ink); }
-
-    :is(.chip-btn, .opt, .next):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-    @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-    @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-    }
-    @media (max-width: 640px) {
-        .q-text { font-size: 1.7rem; }
-        .q-text.is-quote { font-size: 1.3rem; }
-        .opts { grid-template-columns: 1fr; gap: 12px; }
-        .opt { min-height: 72px; font-size: 1.35rem; }
-    }
-</style>

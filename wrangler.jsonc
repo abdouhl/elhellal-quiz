@@ -10,6 +10,14 @@
 		"binding": "ASSETS",
 		"directory": "./dist"
 	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "elhellal-quiz",
+			"database_id": "70697111-48da-438a-bc6b-5327b15f7310",
+			"migrations_dir": "migrations"
+		}
+	],
 	"observability": {
 		"enabled": true
 	}

@@ -1,0 +1,228 @@
+---
+import "../styles/quiz.css";
+---
+
+<main id="main-content" class="app">
+    <div class="topbar" aria-live="polite">
+        <span id="d-num" class="chip">تحدي اليوم</span>
+        <span id="d-prog" class="chip chip-n">٠/١٠</span>
+        <span class="topbar-end">
+            <a class="chip chip-btn" href="/">∞ الوضع اللانهائي</a>
+        </span>
+    </div>
+
+    <div id="play" class="play">
+        <section id="card" class="card">
+            <p id="q-cat" class="q-cat"></p>
+            <h1 id="q-text" class="q-text">جارٍ التحميل…</h1>
+        </section>
+        <div id="opts" class="opts" role="group" aria-label="الخيارات"></div>
+        <div class="foot">
+            <p id="feedback" class="feedback" role="status"></p>
+            <button type="button" id="next" class="next" hidden>التالي ←</button>
+        </div>
+        <p id="crowd" class="crowd"></p>
+        <p class="hint">١٠ أسئلة، نفس الأسئلة لكل اللاعبين اليوم. أنهِها وتحدَّ أصدقاءك بنتيجتك.</p>
+    </div>
+
+    <section id="result" class="card result" hidden aria-live="polite">
+        <p id="r-title" class="q-cat"></p>
+        <h1 id="r-score" class="result-score"></h1>
+        <p id="r-grid" class="result-grid"></p>
+        <p id="r-verdict" class="result-verdict"></p>
+        <p id="r-streak" class="result-streak"></p>
+        <button type="button" id="r-share" class="next">شارك نتيجتك ↗</button>
+        <p class="result-next">التحدي التالي بعد <span id="r-countdown"></span></p>
+        <a class="brag" href="/">تابع اللعب بلا توقف ←</a>
+    </section>
+    <noscript><p class="noscript">هذه اللعبة تحتاج إلى تفعيل جافاسكربت.</p></noscript>
+</main>
+
+<script>
+    import { CATEGORY_ICONS, CATEGORY_LABELS, DAILY_SIZE, dailyIds, dayKey, dayNumber, questionById } from "../game/engine";
+    import type { Question } from "../game/engine";
+    import { SITE, ar, crowdLine, recordAnswer, shareWithFeedback, store } from "../game/client";
+
+    interface DailyState {
+        day: string;
+        ids: string[];
+        /** one entry per answered question: right or wrong */
+        hits: boolean[];
+    }
+
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+    const el = {
+        num: $("d-num"),
+        prog: $("d-prog"),
+        play: $("play"),
+        card: $("card"),
+        qCat: $("q-cat"),
+        qText: $("q-text"),
+        opts: $("opts"),
+        feedback: $("feedback"),
+        next: $<HTMLButtonElement>("next"),
+        crowd: $("crowd"),
+        result: $("result"),
+        rTitle: $("r-title"),
+        rScore: $("r-score"),
+        rGrid: $("r-grid"),
+        rVerdict: $("r-verdict"),
+        rStreak: $("r-streak"),
+        rShare: $("r-share"),
+        rCountdown: $("r-countdown"),
+    };
+
+    const today = dayKey();
+    const title = `تحدي الهلال #${ar(dayNumber(today))}`;
+
+    function loadState(): DailyState {
+        try {
+            const s = JSON.parse(store.get("daily.state") ?? "") as DailyState;
+            if (s.day === today && Array.isArray(s.ids) && Array.isArray(s.hits)) return s;
+        } catch {}
+        return { day: today, ids: dailyIds(today), hits: [] };
+    }
+
+    const state = loadState();
+    const save = () => store.set("daily.state", JSON.stringify(state));
+    let question: Question | null = null;
+    let locked = false;
+    let advanceTimer: number | undefined;
+
+    function renderProgress() {
+        el.num.textContent = title;
+        el.prog.textContent = `${ar(Math.min(state.hits.length + (locked ? 0 : 1), DAILY_SIZE))}/${ar(DAILY_SIZE)}`;
+    }
+
+    function renderQuestion() {
+        const q = questionById(state.ids[state.hits.length]);
+        // A question removed from the bank since the set was drawn counts as skipped-right.
+        if (!q) {
+            state.hits.push(true);
+            save();
+            return advance();
+        }
+        question = q;
+        locked = false;
+        el.qCat.textContent = `${CATEGORY_ICONS[q.category]} ${CATEGORY_LABELS[q.category]}`;
+        el.qText.textContent = q.text;
+        el.qText.classList.toggle("is-quote", q.isQuote);
+        el.opts.replaceChildren(
+            ...q.options.map((text, i) => {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "opt";
+                b.dataset.i = String(i);
+                b.textContent = text;
+                return b;
+            }),
+        );
+        el.feedback.textContent = "";
+        el.feedback.className = "feedback";
+        el.crowd.textContent = "";
+        el.next.hidden = true;
+        renderProgress();
+        el.card.classList.remove("card-in");
+        void el.card.offsetWidth;
+        el.card.classList.add("card-in");
+    }
+
+    function advance() {
+        clearTimeout(advanceTimer);
+        if (state.hits.length >= state.ids.length) showResult();
+        else renderQuestion();
+    }
+
+    function answer(i: number) {
+        if (locked || !question) return;
+        locked = true;
+        const q = question;
+        const ok = i === q.answer;
+        const buttons = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")];
+        buttons.forEach((b) => (b.disabled = true));
+        buttons[q.answer].classList.add("right");
+        if (!ok) buttons[i].classList.add("wrong");
+        state.hits.push(ok);
+        save();
+        if (state.hits.length === state.ids.length) finishDay();
+        recordAnswer(q.id, ok).then((c) => {
+            if (question === q) el.crowd.textContent = crowdLine(c);
+        });
+
+        el.feedback.textContent = ok ? "إجابة صحيحة!" : `الإجابة الصحيحة: ${q.options[q.answer]}`;
+        el.feedback.className = ok ? "feedback ok" : "feedback bad";
+        const last = state.hits.length === state.ids.length;
+        el.next.textContent = last ? "النتيجة ←" : "التالي ←";
+        renderProgress();
+        if (ok && !last) advanceTimer = window.setTimeout(advance, 1300);
+        else {
+            el.next.hidden = false;
+            el.next.focus();
+        }
+    }
+
+    /** Updates the consecutive-days streak, once, when the day's last question is answered. */
+    function finishDay() {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const streak = store.get("daily.last") === dayKey(d) ? (Number(store.get("daily.streak")) || 0) + 1 : 1;
+        store.set("daily.streak", String(streak));
+        store.set("daily.last", today);
+    }
+
+    function verdict(score: number): string {
+        if (score === DAILY_SIZE) return "علامة كاملة! 🏆";
+        if (score >= 8) return "ممتاز! 🧠";
+        if (score >= 6) return "جيد جدًا 👏";
+        if (score >= 4) return "ليس سيئًا 🙂";
+        return "حظًا أوفر غدًا 🌙";
+    }
+
+    function showResult() {
+        const score = state.hits.filter(Boolean).length;
+        const grid = state.hits.map((h) => (h ? "🟧" : "⬛")).join("");
+        const streak = store.get("daily.last") === today ? Number(store.get("daily.streak")) || 1 : 0;
+        const streakLine = streak >= 2 ? `🔥 ${ar(streak)} أيام متتالية` : "";
+
+        el.play.hidden = true;
+        el.result.hidden = false;
+        el.num.textContent = title;
+        el.prog.textContent = `${ar(score)}/${ar(DAILY_SIZE)}`;
+        el.rTitle.textContent = title;
+        el.rScore.textContent = `${ar(score)}/${ar(DAILY_SIZE)}`;
+        el.rGrid.textContent = grid;
+        el.rVerdict.textContent = verdict(score);
+        el.rStreak.textContent = streakLine;
+        el.rShare.onclick = () =>
+            shareWithFeedback([`${title} — ${ar(score)}/${ar(DAILY_SIZE)}`, grid, streakLine].filter(Boolean).join("\n"), `${SITE}/daily/`);
+        el.rShare.focus();
+        tick();
+        setInterval(tick, 1000);
+    }
+
+    function tick() {
+        const now = new Date();
+        const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        const s = Math.max(0, Math.floor((midnight.getTime() - now.getTime()) / 1000));
+        if (s === 0 || dayKey(now) !== today) location.reload();
+        const pad = (n: number) => ar(n).padStart(2, "٠");
+        el.rCountdown.textContent = `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+    }
+
+    el.next.addEventListener("click", advance);
+    el.opts.addEventListener("click", (e) => {
+        const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".opt");
+        if (b && !b.disabled) answer(Number(b.dataset.i));
+    });
+    document.addEventListener("keydown", (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || el.play.hidden) return;
+        const idx = e.key.length === 1 ? Math.max("1234".indexOf(e.key), "١٢٣٤".indexOf(e.key)) : -1;
+        if (idx >= 0) {
+            const b = el.opts.children[idx] as HTMLButtonElement | undefined;
+            if (b && !b.disabled) answer(idx);
+        } else if (e.key === "Enter" && !el.next.hidden && document.activeElement !== el.next) el.next.click();
+    });
+
+    save();
+    advance();
+</script>
