@@ -1,4 +1,5 @@
 // Browser-only helpers shared by the endless quiz and the daily challenge.
+import type { Question } from "./engine";
 
 export const SITE = "https://quiz.elhellal.com";
 
@@ -18,6 +19,26 @@ export const store = {
     },
 };
 
+/**
+ * Shows the question's picture in the card's `#q-fig` (or hides it for text questions).
+ * `onShown` runs once the image is on screen, so answer timing doesn't count the download.
+ */
+export function showPicture(q: Question, onShown: () => void = () => {}) {
+    const fig = document.getElementById("q-fig")!;
+    const img = fig.querySelector("img")!;
+    const credit = fig.querySelector("a")!;
+    document.getElementById("q-text")!.classList.toggle("has-pic", !!q.image);
+    fig.hidden = !q.image;
+    if (!q.image) return;
+    fig.dataset.kind = q.category;
+    credit.textContent = q.credit ? `📷 ${q.credit}` : "";
+    credit.href = q.creditUrl || "#";
+    credit.hidden = !q.credit;
+    img.onload = img.onerror = () => onShown();
+    img.src = q.image;
+    if (img.complete) onShown();
+}
+
 export const ar = (n: number) => String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
 
 /** Crowd numbers are hidden until a question has enough answers to mean something. */
@@ -36,6 +57,16 @@ export async function recordAnswer(id: string, ok: boolean): Promise<Crowd | nul
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ id, ok }),
         });
+        return res.ok ? await res.json() : null;
+    } catch {
+        return null;
+    }
+}
+
+/** The question's totals so far, or null when stats are unavailable. */
+export async function fetchCrowd(id: string): Promise<Crowd | null> {
+    try {
+        const res = await fetch(`/api/answer?id=${encodeURIComponent(id)}`);
         return res.ok ? await res.json() : null;
     } catch {
         return null;

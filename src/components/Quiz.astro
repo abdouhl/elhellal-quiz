@@ -13,8 +13,8 @@ const initial = initialId ? questionById(initialId) : null;
 
 <main id="main-content" class="app">
     <div class="topbar" aria-live="polite">
-        <span id="best" class="chip" title="الأفضل">★ ٥٠٠</span>
-        <span id="stat" class="chip chip-n" title="النتيجة">٥٠٠</span>
+        <span id="best" class="chip" title="الأفضل">★ …</span>
+        <span id="stat" class="chip chip-n" title="النتيجة">…</span>
         <span class="topbar-end">
             <a class="chip chip-btn" href="/daily/">📅 تحدي اليوم</a>
             <button type="button" id="share" class="chip chip-btn">تحدَّ صديقًا ↗</button>
@@ -23,7 +23,11 @@ const initial = initialId ? questionById(initialId) : null;
 
     <section id="card" class="card">
         <p id="q-cat" class="q-cat">{initial && `${CATEGORY_ICONS[initial.category]} ${CATEGORY_LABELS[initial.category]}`}</p>
-        <h1 id="q-text" class={initial?.isQuote ? "q-text is-quote" : "q-text"} data-id={initial ? initialId : undefined}>
+        <figure id="q-fig" class="q-fig" data-kind={initial?.category} hidden={!initial?.image}>
+            <img src={initial?.image} alt="صورة السؤال" decoding="async" />
+            <figcaption><a href={initial?.creditUrl || "#"} target="_blank" rel="noopener" hidden={!initial?.credit}>{initial?.credit && `📷 ${initial.credit}`}</a></figcaption>
+        </figure>
+        <h1 id="q-text" class:list={["q-text", { "is-quote": initial?.isQuote, "has-pic": initial?.image }]} data-id={initial ? initialId : undefined}>
             {initial ? initial.text : "جارٍ التحميل…"}
         </h1>
     </section>
@@ -50,13 +54,12 @@ const initial = initialId ? questionById(initialId) : null;
 </main>
 
 <script>
-    import { CATEGORY_ICONS, CATEGORY_LABELS, createDeck, pointsFor, questionById } from "../game/engine";
+    import { CATEGORY_ICONS, CATEGORY_LABELS, createDeck, difficultyFor, penaltyFor, pointsFor, questionById, timeLimitFor } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { SITE, ar, crowdLine, crowdPercent, recordAnswer, shareWithFeedback, store } from "../game/client";
+    import { SITE, ar, crowdLine, crowdPercent, fetchCrowd, recordAnswer, shareWithFeedback, showPicture, store } from "../game/client";
     import type { Crowd } from "../game/client";
 
     const START_SCORE = 500;
-    const WRONG_PENALTY = 10;
     // At most one vignette opportunity per minute: once this much time has passed, the next question
     // is opened as a real page load via a link click, which is what lets AdSense show a vignette ad.
     const AD_INTERVAL_MS = 60_000;
@@ -85,7 +88,18 @@ const initial = initialId ? questionById(initialId) : null;
     const adDue = () => Date.now() - (Number(store.get("quiz.adAt")) || 0) >= AD_INTERVAL_MS;
     /** Set when the next question will open as its own page (a vignette opportunity). */
     let pageTurn = false;
-    const deck = createDeck("all");
+    /** Ids answered correctly on any visit; they are not asked again until everything has been solved. */
+    const solved = new Set<string>();
+    try {
+        for (const id of JSON.parse(store.get("quiz.solved") ?? "[]")) if (typeof id === "string") solved.add(id);
+    } catch {}
+    // Ask the browser not to evict the saved progress (matters most for the installed PWA).
+    navigator.storage?.persist?.().catch(() => {});
+    const deck = createDeck("all", Math.random, solved);
+    /** When the current question appeared, for the speed bonus. */
+    let shownAt = 0;
+    /** Crowd totals for the question on screen, fetched as it appears, to price it by difficulty. */
+    let before: Crowd | null = null;
     let question: Question | null = null;
     let locked = false;
     let advanceTimer: number | undefined;
@@ -122,6 +136,15 @@ const initial = initialId ? questionById(initialId) : null;
         el.crowd.textContent = "";
         el.brag.hidden = true;
         crowd = null;
+        before = null;
+        fetchCrowd(q.id).then((c) => {
+            if (question === q) before = c;
+        });
+        shownAt = performance.now();
+        // The clock starts when the picture is visible, not while it downloads.
+        showPicture(q, () => {
+            if (question === q && !locked) shownAt = performance.now();
+        });
         pageTurn = false;
         el.card.classList.remove("card-in");
         void el.card.offsetWidth;
@@ -148,6 +171,8 @@ const initial = initialId ? questionById(initialId) : null;
         if (locked || !question) return;
         locked = true;
         const q = question;
+        const timeLeft = 1 - (performance.now() - shownAt) / 1000 / timeLimitFor(q);
+        const difficulty = difficultyFor(crowdPercent(before));
         const buttons = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")];
         buttons.forEach((b) => (b.disabled = true));
         buttons[q.answer].classList.add("right");
@@ -160,7 +185,9 @@ const initial = initialId ? questionById(initialId) : null;
         if (i === q.answer) {
             streak++;
             store.set("quiz.streak", String(streak));
-            const pts = pointsFor(streak);
+            solved.add(q.id);
+            store.set("quiz.solved", JSON.stringify([...solved]));
+            const pts = pointsFor(streak, timeLeft, difficulty);
             score += pts;
             store.set("quiz.score", String(score));
             if (score > best) {
@@ -168,6 +195,7 @@ const initial = initialId ? questionById(initialId) : null;
                 store.set("quiz.best", String(best));
             }
             let msg = `إجابة صحيحة! +${ar(pts)}`;
+            if (timeLeft > 0.6) msg += " ⚡";
             if (streak >= 3) msg += ` 🔥 ${ar(streak)} متتالية`;
             el.feedback.textContent = msg;
             el.feedback.className = "feedback ok";
@@ -182,7 +210,7 @@ const initial = initialId ? questionById(initialId) : null;
         el.brag.hidden = lostStreak < 3;
         streak = 0;
         store.set("quiz.streak", "0");
-        const lost = Math.min(WRONG_PENALTY, score);
+        const lost = Math.min(penaltyFor(timeLeft, difficulty), score);
         score -= lost;
         store.set("quiz.score", String(score));
         el.feedback.textContent = `${lost ? `−${ar(lost)} · ` : ""}الإجابة الصحيحة: ${q.options[q.answer]}`;
@@ -205,7 +233,7 @@ const initial = initialId ? questionById(initialId) : null;
         if (!q) return;
         const pct = crowdPercent(crowd);
         const hook = pct !== null && pct <= 50 ? `${ar(pct)}٪ فقط أجابوا بشكل صحيح. هل تعرف الإجابة؟` : "هل تعرف الإجابة؟ 🤔";
-        const text = q.isQuote ? `من قال: «${q.text}»؟` : q.text;
+        const text = q.isQuote ? `من قال: «${q.text}»؟` : q.image ? `${q.text} 👀` : q.text;
         shareWithFeedback(`${text}\n\n${hook}`, `${SITE}/q/${q.id}`);
     });
     el.brag.addEventListener("click", () =>

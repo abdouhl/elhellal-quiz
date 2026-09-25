@@ -14,6 +14,10 @@ import "../styles/quiz.css";
     <div id="play" class="play">
         <section id="card" class="card">
             <p id="q-cat" class="q-cat"></p>
+            <figure id="q-fig" class="q-fig" hidden>
+                <img alt="صورة السؤال" decoding="async" />
+                <figcaption><a href="#" target="_blank" rel="noopener" hidden></a></figcaption>
+            </figure>
             <h1 id="q-text" class="q-text">جارٍ التحميل…</h1>
         </section>
         <div id="opts" class="opts" role="group" aria-label="الخيارات"></div>
@@ -41,7 +45,7 @@ import "../styles/quiz.css";
 <script>
     import { CATEGORY_ICONS, CATEGORY_LABELS, DAILY_SIZE, dailyIds, dayKey, dayNumber, questionById } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { SITE, ar, crowdLine, recordAnswer, shareWithFeedback, store } from "../game/client";
+    import { SITE, ar, crowdLine, recordAnswer, shareWithFeedback, showPicture, store } from "../game/client";
 
     interface DailyState {
         day: string;
@@ -107,6 +111,7 @@ import "../styles/quiz.css";
         el.qCat.textContent = `${CATEGORY_ICONS[q.category]} ${CATEGORY_LABELS[q.category]}`;
         el.qText.textContent = q.text;
         el.qText.classList.toggle("is-quote", q.isQuote);
+        showPicture(q);
         el.opts.replaceChildren(
             ...q.options.map((text, i) => {
                 const b = document.createElement("button");

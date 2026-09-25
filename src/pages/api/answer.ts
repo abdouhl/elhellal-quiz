@@ -3,6 +3,16 @@ import { questionById } from "../../game/engine";
 
 export const prerender = false;
 
+/** The question's running totals, `{ n, ok }`, without recording anything. */
+export const GET: APIRoute = async ({ url, locals }) => {
+    const id = url.searchParams.get("id");
+    if (!id || !questionById(id)) return new Response(null, { status: 400 });
+    const db = locals.runtime?.env?.DB;
+    if (!db) return new Response(null, { status: 503 });
+    const row = await db.prepare("SELECT n, ok FROM answers WHERE id = ?1").bind(id).first<{ n: number; ok: number }>();
+    return Response.json(row ?? { n: 0, ok: 0 }, { headers: { "cache-control": "public, max-age=60" } });
+};
+
 /** Records one answer and returns the question's running totals: `{ n, ok }`. */
 export const POST: APIRoute = async ({ request, locals }) => {
     let body: { id?: unknown; ok?: unknown };

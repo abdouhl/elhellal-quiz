@@ -1,6 +1,6 @@
 // Offline support: pages are network-first (fresh content, cached fallback),
 // hashed build assets and fonts are cache-first. Cross-origin (ads) is untouched.
-const VERSION = "v1";
+const VERSION = "v2";
 const PAGES = `pages-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 const PRECACHE = ["/", "/manifest.webmanifest", "/favicon.svg", "/icon-192.png"];
@@ -38,7 +38,7 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
-    if (url.pathname.startsWith("/_astro/") || url.pathname.startsWith("/woffs/") || /\.(png|svg|woff2)$/.test(url.pathname)) {
+    if (url.pathname.startsWith("/_astro/") || url.pathname.startsWith("/woffs/") || /\.(png|jpe?g|svg|woff2)$/.test(url.pathname)) {
         event.respondWith(
             caches.match(req).then(
                 (hit) =>

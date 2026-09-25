@@ -1,7 +1,8 @@
 import bank from "../data/bank.json";
 import generated from "../data/generated.json";
+import pictures from "../data/pictures.json";
 
-export type Category = "geo" | "sci" | "hist" | "gen" | "lang" | "lit" | "quote";
+export type Category = "geo" | "sci" | "hist" | "gen" | "lang" | "lit" | "quote" | "flag" | "face" | "place";
 export type CategoryFilter = Category | "all";
 
 export interface Question {
@@ -13,6 +14,10 @@ export interface Question {
     isQuote: boolean;
     options: string[];
     answer: number;
+    /** picture questions: the image under /pics/, and its attribution (empty for public-domain flags) */
+    image?: string;
+    credit?: string;
+    creditUrl?: string;
 }
 
 export const CATEGORY_LABELS: Record<Category, string> = {
@@ -23,6 +28,9 @@ export const CATEGORY_LABELS: Record<Category, string> = {
     lang: "لغة عربية",
     lit: "أدب وكتب",
     quote: "من قال؟",
+    flag: "أعلام",
+    face: "مشاهير",
+    place: "معالم",
 };
 
 export const CATEGORY_ICONS: Record<Category, string> = {
@@ -33,13 +41,28 @@ export const CATEGORY_ICONS: Record<Category, string> = {
     lang: "✍️",
     lit: "📚",
     quote: "💬",
+    flag: "🚩",
+    face: "🧑",
+    place: "🗺️",
 };
 
 type Source =
     | { kind: "bank"; i: number }
     | { kind: "quote"; i: number }
     | { kind: "book-author"; i: number }
-    | { kind: "author-book"; i: number };
+    | { kind: "author-book"; i: number }
+    | { kind: "pic"; i: number };
+
+type PicKind = "flag" | "face" | "place";
+/** Picture questions (built by scripts/build-pictures.ts): kind, slug, answer, distractor group, image, credit. */
+const pics = pictures as { k: PicKind; s: string; a: string; g: string; img: string; c: string; u: string }[];
+const PIC_PROMPTS: Record<PicKind, string> = {
+    flag: "علم أي دولة هذا؟",
+    face: "من هذه الشخصية؟",
+    place: "ما اسم هذا المعلم؟",
+};
+const picId = (i: number) => `p-${pics[i].k}-${pics[i].s}`;
+const picIndex = new Map(pics.map((_, i) => [picId(i), i]));
 
 const { authors, quotes, books } = generated as {
     authors: string[];
@@ -48,13 +71,15 @@ const { authors, quotes, books } = generated as {
 };
 
 // Every category → the items it can draw from.
-const pools: Record<Category, Source[]> = { geo: [], sci: [], hist: [], gen: [], lang: [], lit: [], quote: [] };
+const pools: Record<Category, Source[]> = { geo: [], sci: [], hist: [], gen: [], lang: [], lit: [], quote: [], flag: [], face: [], place: [] };
 (bank as [Category, string, string, string[]][]).forEach(([c], i) => pools[c].push({ kind: "bank", i }));
 quotes.forEach((_, i) => pools.quote.push({ kind: "quote", i }));
 books.forEach((_, i) => {
     pools.lit.push({ kind: "book-author", i });
     pools.lit.push({ kind: "author-book", i });
 });
+
+pics.forEach((p, i) => pools[p.k].push({ kind: "pic", i }));
 
 export const CATEGORIES = Object.keys(pools) as Category[];
 
@@ -128,10 +153,19 @@ function build(category: Category, src: Source, rand: () => number): Question {
             const wrong = pick(others, 3, [title], rand);
             return finish(category, `ab${src.i}`, `أي كتاب من هذه الكتب من تأليف ${authors[ai]}؟`, false, title, wrong, rand);
         }
+        case "pic": {
+            const p = pics[src.i];
+            // Look-alikes first (same region's flags, same field's people), then anything of the same kind.
+            const kind = pics.filter((o) => o.k === p.k && o.a !== p.a);
+            const wrong = pick(kind.filter((o) => o.g === p.g).map((o) => o.a), 3, [], rand);
+            wrong.push(...pick(kind.map((o) => o.a), 3 - wrong.length, wrong, rand));
+            const q = finish(p.k, picId(src.i), PIC_PROMPTS[p.k], false, p.a, wrong, rand);
+            return { ...q, image: `/pics/${p.img}`, credit: p.c, creditUrl: p.u };
+        }
     }
 }
 
-/** Every fixed question, as `[id, category]`. Ids are stable: `b3`, `q12`, `ba7`, `ab7`. */
+/** Every fixed question, as `[id, category]`. Ids are stable: `b3`, `q12`, `ba7`, `ab7`, `p-flag-dz`. */
 export function allQuestionIds(): [string, Category][] {
     const ids: [string, Category][] = [];
     (bank as [Category, string, string, string[]][]).forEach(([c], i) => ids.push([`b${i}`, c]));
@@ -140,11 +174,14 @@ export function allQuestionIds(): [string, Category][] {
         ids.push([`ba${i}`, "lit"]);
         ids.push([`ab${i}`, "lit"]);
     });
+    pics.forEach((p, i) => ids.push([picId(i), p.k]));
     return ids;
 }
 
 /** Rebuilds a question from its id with seeded distractors/order — identical on every call, server or client. */
 export function questionById(id: string): Question | null {
+    const pic = picIndex.get(id);
+    if (pic !== undefined) return build(pics[pic].k, { kind: "pic", i: pic }, seeded(id));
     const m = /^(b|q|ba|ab)(\d+)$/.exec(id);
     if (!m) return null;
     const i = Number(m[2]);
@@ -155,26 +192,41 @@ export function questionById(id: string): Question | null {
     return build(category, { kind, i }, seeded(id));
 }
 
+const SRC_PREFIX = { bank: "b", quote: "q", "book-author": "ba", "author-book": "ab" } as const;
+const srcId = (s: Source) => (s.kind === "pic" ? picId(s.i) : `${SRC_PREFIX[s.kind]}${s.i}`);
+
 /**
  * Endless question stream. Picks a random enabled category, then a random question in it
  * that hasn't been shown yet; once a category is exhausted it starts over.
+ * Ids in `solved` (answered correctly before, possibly on another visit) are skipped for as long as
+ * any unsolved question is left; the caller may keep adding to the set.
  */
-export function createDeck(filter: CategoryFilter, rand: () => number = Math.random) {
+export function createDeck(filter: CategoryFilter, rand: () => number = Math.random, solved: ReadonlySet<string> = new Set()) {
     const enabled: Category[] = filter === "all" ? CATEGORIES : [filter];
     const seen = new Set<string>();
     let last = "";
 
+    /** Unseen, unsolved sources in `category`; starts the category over once they have all been seen. */
+    function candidates(category: Category, allowSolved: boolean): Source[] {
+        const pool = pools[category].filter((s) => allowSolved || !solved.has(srcId(s)));
+        const fresh = pool.filter((s) => !seen.has(`${category}:${srcId(s)}`));
+        if (fresh.length) return fresh;
+        for (const s of pool) seen.delete(`${category}:${srcId(s)}`);
+        return pool;
+    }
+
     return {
         next(): Question {
-            const category = enabled[Math.floor(rand() * enabled.length)];
-            const pool = pools[category];
-            let fresh = pool.filter((s) => !seen.has(`${category}:${s.kind}:${s.i}`));
+            let category = enabled[Math.floor(rand() * enabled.length)];
+            let fresh = candidates(category, false);
             if (fresh.length === 0) {
-                for (const s of pool) seen.delete(`${category}:${s.kind}:${s.i}`);
-                fresh = pool;
+                // This category is fully solved: move to one that isn't, or replay once everything is.
+                const open = enabled.filter((c) => pools[c].some((s) => !solved.has(srcId(s))));
+                if (open.length) category = open[Math.floor(rand() * open.length)];
+                fresh = candidates(category, open.length === 0);
             }
             const src = fresh[Math.floor(rand() * fresh.length)];
-            seen.add(`${category}:${src.kind}:${src.i}`);
+            seen.add(`${category}:${srcId(src)}`);
             const q = build(category, src, rand);
             // never show the exact same question twice in a row (tiny pools)
             if (q.id === last && fresh.length > 1) return this.next();
@@ -189,9 +241,26 @@ export function timeLimitFor(q: Question): number {
     return q.isQuote || q.text.length > 80 ? 20 : 15;
 }
 
-/** Points for a correct answer: base 10, a streak bonus that caps at +10, and up to +5 for speed. */
-export function pointsFor(streakAfter: number, timeFraction = 0): number {
-    return 10 + Math.min(streakAfter - 1, 10) + Math.round(5 * Math.max(0, Math.min(1, timeFraction)));
+/**
+ * How hard a question is, 0 (everyone gets it) to 1 (nobody does), from the share of players who
+ * answered it correctly; 0.5 until there is enough data.
+ */
+export function difficultyFor(correctPercent: number | null): number {
+    return correctPercent === null ? 0.5 : 1 - correctPercent / 100;
+}
+
+/**
+ * Points for a correct answer: 5–20 by difficulty, a streak bonus that caps at +10, and up to +5
+ * for speed (`timeFraction` is the share of the time limit still left).
+ */
+export function pointsFor(streakAfter: number, timeFraction = 0, difficulty = 0.5): number {
+    const base = 5 + Math.round(15 * difficulty);
+    return base + Math.min(streakAfter - 1, 10) + Math.round(5 * Math.max(0, Math.min(1, timeFraction)));
+}
+
+/** Points lost for a wrong answer: 4–16, more for questions most players get right, +3 for a rushed guess. */
+export function penaltyFor(timeFraction = 0, difficulty = 0.5): number {
+    return 4 + Math.round(12 * (1 - difficulty)) + (timeFraction > 0.8 ? 3 : 0);
 }
 
 /** The daily challenge's first day; day numbers (`#1`, `#2`, …) count from here. */
