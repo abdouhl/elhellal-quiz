@@ -19,7 +19,12 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <meta name="theme-color" content="#476b6b" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <meta name="apple-mobile-web-app-title" content="اختبار الهلال" />
     <link rel="preload" href="/woffs/ROM-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/woffs/ROM-Bold.woff2" as="font" type="font/woff2" crossorigin />
     <title>{pageTitle}</title>
@@ -47,6 +52,12 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
     <footer class="site-footer">
         <a href="https://elhellal.com">الهلال</a>
     </footer>
+
+    <script is:inline>
+        if ("serviceWorker" in navigator) {
+            addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
+        }
+    </script>
 </body>
 </html>
 
@@ -81,7 +92,7 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
     }
     html {
         font-family: var(--body-copy);
-        background-color: #476b6b;
+        background-color: var(--background-high-contrast);
     }
     body {
         margin: 0;
@@ -89,8 +100,8 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
         overflow-x: hidden;
         font-family: var(--body-copy);
         min-height: 100vh;
-        color: #fff;
-        background: #476b6b;
+        color: var(--content-primary);
+        background: var(--background-high-contrast);
     }
     a {
         color: inherit;
@@ -105,7 +116,8 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
         left: 50%;
         transform: translateX(-50%);
         padding: 8px 16px;
-        background: #375656;
+        background: var(--background);
+        color: var(--link);
         z-index: 9999;
     }
     .skip-link:focus {
@@ -119,10 +131,10 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
         font-size: 0.8rem;
     }
     .site-footer a {
-        color: rgba(255, 255, 255, 0.55);
+        color: var(--content-secondary);
         text-decoration: none;
     }
     .site-footer a:hover {
-        color: #fff;
+        color: var(--link);
     }
 </style>

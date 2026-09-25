@@ -35,7 +35,7 @@ const initial = initialId ? questionById(initialId) : null;
 
     <div class="foot">
         <p id="feedback" class="feedback" role="status"></p>
-        <button type="button" id="next" class="next" hidden>التالي ←</button>
+        <a id="next" class="next" href="/" hidden>التالي ←</a>
     </div>
 
     <p class="hint">اضغط ١ – ٤ للإجابة، وEnter للسؤال التالي.</p>
@@ -47,6 +47,10 @@ const initial = initialId ? questionById(initialId) : null;
     import type { Question } from "../game/engine";
 
     const START_SCORE = 500;
+    const WRONG_PENALTY = 10;
+    // At most one vignette opportunity per minute: once this much time has passed, the next question
+    // is opened as a real page load via a link click, which is what lets AdSense show a vignette ad.
+    const AD_INTERVAL_MS = 60_000;
     const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
     const el = {
@@ -57,7 +61,7 @@ const initial = initialId ? questionById(initialId) : null;
         opts: $("opts"),
         card: $("card"),
         feedback: $("feedback"),
-        next: $<HTMLButtonElement>("next"),
+        next: $<HTMLAnchorElement>("next"),
     };
 
     // localStorage can throw (private windows, blocked storage) — the quiz must work without it.
@@ -79,9 +83,14 @@ const initial = initialId ? questionById(initialId) : null;
     const ar = (n: number) => String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
 
     // The score carries across pages, so a visitor arriving from a pin keeps it when they continue.
-    let score = Number(store.get("quiz.score")) || START_SCORE;
+    const savedScore = store.get("quiz.score");
+    let score = savedScore === null ? START_SCORE : Number(savedScore) || 0;
     let best = Math.max(Number(store.get("quiz.best")) || 0, score);
-    let streak = 0;
+    let streak = Number(store.get("quiz.streak")) || 0;
+    if (!store.get("quiz.adAt")) store.set("quiz.adAt", String(Date.now()));
+    const adDue = () => Date.now() - (Number(store.get("quiz.adAt")) || 0) >= AD_INTERVAL_MS;
+    /** Set when the next question will open as its own page (a vignette opportunity). */
+    let pageTurn = false;
     const deck = createDeck("all");
     let question: Question | null = null;
     let locked = false;
@@ -111,6 +120,8 @@ const initial = initialId ? questionById(initialId) : null;
         el.feedback.textContent = "";
         el.feedback.className = "feedback";
         el.next.hidden = true;
+        el.next.href = "/";
+        pageTurn = false;
         el.card.classList.remove("card-in");
         void el.card.offsetWidth;
         el.card.classList.add("card-in");
@@ -120,6 +131,16 @@ const initial = initialId ? questionById(initialId) : null;
         clearTimeout(advanceTimer);
         renderQuestion(deck.next());
         renderStats();
+    }
+
+    /** Shows the "next" control; when an ad is due it links to the next question's own page. */
+    function showNext() {
+        if (adDue()) {
+            pageTurn = true;
+            el.next.href = `/q/${deck.next().id}`;
+        }
+        el.next.hidden = false;
+        el.next.focus();
     }
 
     function answer(i: number) {
@@ -132,6 +153,7 @@ const initial = initialId ? questionById(initialId) : null;
 
         if (i === q.answer) {
             streak++;
+            store.set("quiz.streak", String(streak));
             const pts = pointsFor(streak);
             score += pts;
             store.set("quiz.score", String(score));
@@ -144,20 +166,32 @@ const initial = initialId ? questionById(initialId) : null;
             el.feedback.textContent = msg;
             el.feedback.className = "feedback ok";
             renderStats();
-            advanceTimer = window.setTimeout(nextQuestion, 900);
+            if (adDue()) showNext();
+            else advanceTimer = window.setTimeout(nextQuestion, 900);
             return;
         }
 
         buttons[i].classList.add("wrong");
         streak = 0;
-        el.feedback.textContent = `الإجابة الصحيحة: ${q.options[q.answer]}`;
+        store.set("quiz.streak", "0");
+        const lost = Math.min(WRONG_PENALTY, score);
+        score -= lost;
+        store.set("quiz.score", String(score));
+        el.feedback.textContent = `${lost ? `−${ar(lost)} · ` : ""}الإجابة الصحيحة: ${q.options[q.answer]}`;
         el.feedback.className = "feedback bad";
-        el.next.hidden = false;
-        el.next.focus();
+        showNext();
         renderStats();
     }
 
-    el.next.addEventListener("click", nextQuestion);
+    el.next.addEventListener("click", (e) => {
+        if (pageTurn) {
+            // Let the browser follow the link so AdSense can interpose a vignette.
+            store.set("quiz.adAt", String(Date.now()));
+            return;
+        }
+        e.preventDefault();
+        nextQuestion();
+    });
     el.opts.addEventListener("click", (e) => {
         const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".opt");
         if (b && !b.disabled) answer(Number(b.dataset.i));
@@ -182,12 +216,17 @@ const initial = initialId ? questionById(initialId) : null;
 
 <style is:global>
     :root {
-        --page: #476b6b;
-        --tile: #375656;
-        --tile-hover: #2f4b4b;
-        --chip: #375656;
-        --right: #3f9e72;
-        --wrong: #b84a4a;
+        --page: var(--black);
+        --tile: var(--grey10);
+        --tile-hover: var(--grey9);
+        --tile-border: var(--grey8);
+        --chip: var(--grey10);
+        --accent: DarkOrange;
+        --accent-hover: #ffa333;
+        --ink: var(--grey1);
+        --ink-muted: var(--grey4);
+        --right: #2f9e6a;
+        --wrong: #c0453f;
     }
 
     [hidden] { display: none !important; }
@@ -208,21 +247,21 @@ const initial = initialId ? questionById(initialId) : null;
     .topbar { display: flex; justify-content: flex-start; gap: 8px; }
     .chip {
         padding: 6px 12px;
-        border: 0;
+        border: 1px solid var(--tile-border);
         border-radius: 2px;
         background: var(--chip);
-        color: #fff;
+        color: var(--ink);
         font-family: var(--body-strong);
         font-size: 1.05rem;
         line-height: 1.4;
     }
     .chip-btn { cursor: pointer; }
-    .chip-btn:hover { background: var(--tile-hover); }
-    .chip-n { font-variant-numeric: tabular-nums; min-width: 2.2ch; text-align: center; }
+    .chip-btn:hover { background: var(--tile-hover); border-color: var(--accent); }
+    .chip-n { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 2.2ch; text-align: center; }
 
     .card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 0; text-align: center; }
     .card-in { animation: fade-up 0.3s ease both; }
-    .q-cat { margin: 0 0 12px; font-size: 0.9rem; color: rgba(255, 255, 255, 0.6); }
+    .q-cat { margin: 0 0 12px; font-size: 0.9rem; color: var(--ink-muted); }
     .q-text {
         margin: 0;
         max-width: 24em;
@@ -230,7 +269,7 @@ const initial = initialId ? questionById(initialId) : null;
         font-weight: normal;
         font-size: 2.6rem;
         line-height: 1.6;
-        color: #fff;
+        color: var(--ink);
         text-wrap: balance;
     }
     .q-text.is-quote { max-width: 30em; font-size: 1.7rem; line-height: 1.8; }
@@ -239,24 +278,24 @@ const initial = initialId ? questionById(initialId) : null;
     .opt {
         min-height: 140px;
         padding: 16px 20px;
-        border: 0;
+        border: 1px solid var(--tile-border);
         border-radius: 0;
         background: var(--tile);
-        color: #fff;
+        color: var(--ink);
         font-family: var(--body-strong);
         font-size: 2rem;
         line-height: 1.4;
         text-align: center;
         cursor: pointer;
-        transition: background 0.15s;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
-    .opt:hover:not(:disabled) { background: var(--tile-hover); }
-    .opt:disabled { color: rgba(255, 255, 255, 0.55); }
-    .opt.right { background: var(--right); color: #fff; }
-    .opt.wrong { background: var(--wrong); color: #fff; }
+    .opt:hover:not(:disabled) { background: var(--tile-hover); border-color: var(--accent); color: var(--accent); }
+    .opt:disabled { color: var(--ink-muted); }
+    .opt.right { background: var(--right); border-color: var(--right); color: #fff; }
+    .opt.wrong { background: var(--wrong); border-color: var(--wrong); color: #fff; }
 
     .foot { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 64px; margin-top: 8px; }
-    .feedback { margin: 0; color: #fff; }
+    .feedback { margin: 0; color: var(--ink); }
     .feedback.ok { color: #b8f0d4; }
     .feedback.bad { color: #ffd0d0; }
     .next {
@@ -264,16 +303,17 @@ const initial = initialId ? questionById(initialId) : null;
         padding: 8px 24px;
         border: 0;
         border-radius: 2px;
-        background: var(--tile);
-        color: #fff;
+        background: var(--accent);
+        color: var(--black);
         cursor: pointer;
         font-family: var(--body-strong);
+        text-decoration: none;
     }
-    .next:hover { background: var(--tile-hover); }
-    .hint { margin: 0 0 12px; text-align: center; font-size: 0.8rem; color: rgba(255, 255, 255, 0.55); }
-    .noscript { text-align: center; color: #fff; }
+    .next:hover { background: var(--accent-hover); }
+    .hint { margin: 0 0 12px; text-align: center; font-size: 0.8rem; color: var(--ink-muted); }
+    .noscript { text-align: center; color: var(--ink); }
 
-    :is(.chip-btn, .opt, .next):focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    :is(.chip-btn, .opt, .next):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     @media (prefers-reduced-motion: reduce) {
