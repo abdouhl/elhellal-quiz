@@ -101,13 +101,37 @@ function frame(body: string, tag: string): string {
     </svg>`;
 }
 
+/** The question's picture, embedded, fitted into the box (portraits fill it, cropped toward the face). */
+function pictureSvg(q: Question, x: number, y: number, w: number, h: number): string {
+    const file = path.join(root, "public", q.image!);
+    const mime = file.endsWith(".png") ? "image/png" : "image/jpeg";
+    const href = `data:${mime};base64,${readFileSync(file).toString("base64")}`;
+    const fit = q.category === "face" ? "xMidYMin slice" : "xMidYMid meet";
+    if (q.category === "face") {
+        // A square, centred in the box, so the crop keeps the whole face.
+        x += (w - h) / 2;
+        w = h;
+    }
+    return `<clipPath id="pic"><rect x="${x}" y="${y}" width="${w}" height="${h}"/></clipPath>
+        <image x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="${fit}" clip-path="url(#pic)" href="${href}"/>`;
+}
+
 function questionSvg(q: Question): string {
-    const text = q.isQuote ? `«${q.text}»` : q.text;
-    const size = text.length <= 50 ? 54 : text.length <= 100 ? 42 : 32;
-    const lines = wrap(text, size, W - 2 * PAD, 3, 700);
-    const lh = Math.round(size * 1.45);
-    const qTop = 150 + Math.round(((3 - lines.length) * lh) / 2);
-    const question = textBlock(lines, W / 2, qTop, size, lh, COLORS.ink, "middle", 700);
+    let question: string;
+    if (q.image) {
+        // Picture on the left, the prompt beside it on the right.
+        const size = 54;
+        const lines = wrap(q.text, size, 520, 2, 700);
+        const lh = Math.round(size * 1.45);
+        question = pictureSvg(q, PAD, 104, 540, 240) + textBlock(lines, W - PAD, 240 - ((lines.length - 1) * lh) / 2, size, lh, COLORS.ink, "end", 700);
+    } else {
+        const text = q.isQuote ? `«${q.text}»` : q.text;
+        const size = text.length <= 50 ? 54 : text.length <= 100 ? 42 : 32;
+        const lines = wrap(text, size, W - 2 * PAD, 3, 700);
+        const lh = Math.round(size * 1.45);
+        const qTop = 150 + Math.round(((3 - lines.length) * lh) / 2);
+        question = textBlock(lines, W / 2, qTop, size, lh, COLORS.ink, "middle", 700);
+    }
 
     // 2×2 option tiles, first option top-right to match the RTL page.
     const gap = 20;
@@ -145,6 +169,6 @@ const render = (svg: string, name: string) =>
 const started = Date.now();
 const ids = allQuestionIds();
 for (const [id] of ids) render(questionSvg(questionById(id)!), id);
-render(posterSvg("اختبار لا ينتهي", "جغرافيا، علوم، تاريخ، أدب، و«من قال؟». كم نقطة تستطيع أن تجمع؟", "أسئلة بالعربية"), "home");
+render(posterSvg("اختبار لا ينتهي", "جغرافيا، علوم، تاريخ، أدب، أعلام، مشاهير، و«من قال؟». كم نقطة تستطيع أن تجمع؟", "أسئلة بالعربية"), "home");
 render(posterSvg("تحدي اليوم", "١٠ أسئلة جديدة كل يوم، نفس الأسئلة للجميع. هل تتفوق على أصدقائك؟", "كل يوم"), "daily");
 console.log(`og: ${ids.length + 2} images in ${((Date.now() - started) / 1000).toFixed(1)}s`);
