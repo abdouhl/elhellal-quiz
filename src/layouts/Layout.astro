@@ -53,10 +53,65 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
         <a href="https://elhellal.com">الهلال</a>
     </footer>
 
+    <div class="install-cta" id="install-cta" role="dialog" aria-labelledby="install-cta-title" hidden>
+        <img src="/icon-192.png" alt="" width="40" height="40" />
+        <div class="install-cta-text">
+            <strong id="install-cta-title">ثبّت اختبار الهلال</strong>
+            <span id="install-cta-desc">العب بسرعة من شاشتك الرئيسية، حتى بدون إنترنت.</span>
+        </div>
+        <button type="button" class="install-cta-btn" id="install-cta-btn">تثبيت</button>
+        <button type="button" class="install-cta-close" id="install-cta-close" aria-label="إغلاق">×</button>
+    </div>
+
     <script is:inline>
         if ("serviceWorker" in navigator) {
             addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
         }
+
+        (() => {
+            const KEY = "install-cta-dismissed";
+            const SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+            const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+            const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+            if (standalone || !mobile) return;
+            try {
+                if (Date.now() - Number(localStorage.getItem(KEY) || 0) < SNOOZE_MS) return;
+            } catch {}
+
+            const cta = document.getElementById("install-cta");
+            const btn = document.getElementById("install-cta-btn");
+            const desc = document.getElementById("install-cta-desc");
+            const hide = (remember) => {
+                cta.hidden = true;
+                if (remember) try { localStorage.setItem(KEY, String(Date.now())); } catch {}
+            };
+            document.getElementById("install-cta-close").addEventListener("click", () => hide(true));
+
+            const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && navigator.platform === "MacIntel";
+            if (ios) {
+                // iOS has no install prompt API: show manual instructions instead.
+                desc.textContent = "اضغط على زر المشاركة ⎋ ثم «إضافة إلى الشاشة الرئيسية».";
+                btn.hidden = true;
+                setTimeout(() => (cta.hidden = false), 3000);
+                return;
+            }
+
+            let deferred;
+            addEventListener("beforeinstallprompt", (e) => {
+                e.preventDefault();
+                deferred = e;
+                cta.hidden = false;
+            });
+            btn.addEventListener("click", async () => {
+                if (!deferred) return;
+                deferred.prompt();
+                const { outcome } = await deferred.userChoice;
+                deferred = null;
+                hide(outcome !== "accepted");
+            });
+            addEventListener("appinstalled", () => hide(false));
+        })();
     </script>
 </body>
 </html>
@@ -136,5 +191,73 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
     }
     .site-footer a:hover {
         color: var(--link);
+    }
+    .install-cta {
+        position: fixed;
+        inset-inline: 12px;
+        bottom: calc(12px + env(safe-area-inset-bottom));
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        border: 1px solid var(--grey8);
+        border-radius: 14px;
+        background: var(--grey10);
+        color: var(--content-primary);
+        box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+        animation: install-cta-in 0.3s ease-out;
+    }
+    .install-cta[hidden] {
+        display: none;
+    }
+    .install-cta img {
+        flex: none;
+        border-radius: 10px;
+    }
+    .install-cta-text {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 0.8rem;
+        color: var(--content-secondary);
+    }
+    .install-cta-text strong {
+        font-family: var(--body-strong);
+        font-size: 0.95rem;
+        color: var(--content-primary);
+    }
+    .install-cta-btn {
+        flex: none;
+        padding: 8px 16px;
+        border: 0;
+        border-radius: 10px;
+        background: DarkOrange;
+        color: var(--black);
+        font-family: var(--body-strong);
+        font-size: 0.9rem;
+        cursor: pointer;
+    }
+    .install-cta-close {
+        flex: none;
+        align-self: flex-start;
+        padding: 0 4px;
+        border: 0;
+        background: none;
+        color: var(--content-secondary);
+        font-size: 1.3rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+    :is(.install-cta-btn, .install-cta-close):focus-visible {
+        outline: 2px solid DarkOrange;
+        outline-offset: 2px;
+    }
+    @keyframes install-cta-in {
+        from { transform: translateY(120%); opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .install-cta { animation: none; }
     }
 </style>
