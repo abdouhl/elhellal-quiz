@@ -284,16 +284,36 @@ function srcId(s: Source): string {
     }
 }
 
+/** How many random candidates the deck weighs against the target difficulty on each pick. */
+const SAMPLE = 6;
+
+export interface DeckTuning {
+    /** Share of players (0–100) who answered the question correctly, or null while unknown. */
+    correctRate?: (id: string) => number | null;
+    /** Difficulty to aim for on the next pick, 0 (easy) to 1 (hard). */
+    level?: () => number;
+}
+
 /**
- * Endless question stream. Picks a random enabled category, then a random question in it
- * that hasn't been shown yet; once a category is exhausted it starts over.
+ * Endless question stream. Picks a random enabled category (never the previous one), then a
+ * question in it that hasn't been shown yet, preferring ones whose difficulty is near `level()`;
+ * once a category is exhausted it starts over.
  * Ids in `solved` (answered correctly before, possibly on another visit) are skipped for as long as
  * any unsolved question is left; the caller may keep adding to the set.
  */
-export function createDeck(filter: CategoryFilter, rand: () => number = Math.random, solved: ReadonlySet<string> = new Set()) {
+export function createDeck(
+    filter: CategoryFilter,
+    rand: () => number = Math.random,
+    solved: ReadonlySet<string> = new Set(),
+    { correctRate = () => null, level = () => 0.5 }: DeckTuning = {},
+) {
     const enabled: Category[] = filter === "all" ? CATEGORIES : [filter];
     const seen = new Set<string>();
+    /** Missed questions waiting to come back once `drawn` reaches `due`. */
+    const retries: { category: Category; src: Source; due: number }[] = [];
+    let drawn = 0;
     let last = "";
+    let lastCategory: Category | null = null;
 
     /** Unseen, unsolved sources in `category`; starts the category over once they have all been seen. */
     function candidates(category: Category, allowSolved: boolean): Source[] {
@@ -304,53 +324,55 @@ export function createDeck(filter: CategoryFilter, rand: () => number = Math.ran
         return pool;
     }
 
+    /** The source among a few random ones whose difficulty is closest to the target. */
+    function closest(fresh: Source[]): Source {
+        const target = level();
+        const cost = (s: Source) => {
+            const rate = correctRate(srcId(s));
+            return Math.abs((rate === null ? 0.5 : 1 - rate / 100) - target);
+        };
+        let best = fresh[Math.floor(rand() * fresh.length)];
+        for (let k = 1; k < Math.min(SAMPLE, fresh.length); k++) {
+            const s = fresh[Math.floor(rand() * fresh.length)];
+            if (cost(s) < cost(best)) best = s;
+        }
+        return best;
+    }
+
+    function emit(category: Category, src: Source): Question {
+        const q = build(category, src, rand);
+        last = q.id;
+        lastCategory = category;
+        return q;
+    }
+
     return {
         next(): Question {
-            let category = enabled[Math.floor(rand() * enabled.length)];
+            drawn++;
+            const r = retries.findIndex((x) => x.due <= drawn && x.category !== lastCategory);
+            if (r >= 0) return emit(retries[r].category, retries.splice(r, 1)[0].src);
+
+            const choices = enabled.length > 1 ? enabled.filter((c) => c !== lastCategory) : enabled;
+            let category = choices[Math.floor(rand() * choices.length)];
             let fresh = candidates(category, false);
             if (fresh.length === 0) {
                 // This category is fully solved: move to one that isn't, or replay once everything is.
-                const open = enabled.filter((c) => pools[c].some((s) => !solved.has(srcId(s))));
+                const open = choices.filter((c) => pools[c].some((s) => !solved.has(srcId(s))));
                 if (open.length) category = open[Math.floor(rand() * open.length)];
                 fresh = candidates(category, open.length === 0);
             }
-            const src = fresh[Math.floor(rand() * fresh.length)];
-            seen.add(`${category}:${srcId(src)}`);
-            const q = build(category, src, rand);
             // never show the exact same question twice in a row (tiny pools)
-            if (q.id === last && fresh.length > 1) return this.next();
-            last = q.id;
-            return q;
+            if (fresh.length > 1) fresh = fresh.filter((s) => srcId(s) !== last);
+            const src = closest(fresh);
+            seen.add(`${category}:${srcId(src)}`);
+            return emit(category, src);
+        },
+        /** Brings a missed question back 10–20 questions from now, with its options reshuffled. */
+        retry(id: string) {
+            const entry = registry.get(id);
+            if (entry && !retries.some((x) => srcId(x.src) === id)) retries.push({ category: entry[0], src: entry[1], due: drawn + 10 + Math.floor(rand() * 11) });
         },
     };
-}
-
-/** Seconds allowed to answer: long questions and quotes get more time. */
-export function timeLimitFor(q: Question): number {
-    if (q.year) return 25;
-    return q.isQuote || q.text.length + (q.claim?.length ?? 0) > 80 ? 20 : 15;
-}
-
-/**
- * How hard a question is, 0 (everyone gets it) to 1 (nobody does), from the share of players who
- * answered it correctly; 0.5 until there is enough data.
- */
-export function difficultyFor(correctPercent: number | null): number {
-    return correctPercent === null ? 0.5 : 1 - correctPercent / 100;
-}
-
-/**
- * Points for a correct answer: 5–20 by difficulty, a streak bonus that caps at +10, and up to +5
- * for speed (`timeFraction` is the share of the time limit still left).
- */
-export function pointsFor(streakAfter: number, timeFraction = 0, difficulty = 0.5): number {
-    const base = 5 + Math.round(15 * difficulty);
-    return base + Math.min(streakAfter - 1, 10) + Math.round(5 * Math.max(0, Math.min(1, timeFraction)));
-}
-
-/** Points lost for a wrong answer: 4–16, more for questions most players get right, +3 for a rushed guess. */
-export function penaltyFor(timeFraction = 0, difficulty = 0.5): number {
-    return 4 + Math.round(12 * (1 - difficulty)) + (timeFraction > 0.8 ? 3 : 0);
 }
 
 /** The daily challenge's first day; day numbers (`#1`, `#2`, …) count from here. */

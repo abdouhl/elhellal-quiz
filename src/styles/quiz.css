@@ -42,6 +42,10 @@ button:disabled { cursor: default; }
 .chip-btn { cursor: pointer; text-decoration: none; }
 .chip-btn:hover { background: var(--tile-hover); border-color: var(--accent); }
 .chip-n { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 2.2ch; text-align: center; }
+.chip.bump { animation: pop 0.35s ease; }
+/* Report: a quiet corner icon that only lights up on hover. */
+.chip-icon { border-color: transparent; background: none; color: var(--ink-muted); }
+.chip-icon:disabled { opacity: 0.4; }
 
 .card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 0; text-align: center; }
 .card-in { animation: fade-up 0.3s ease both; }
@@ -91,6 +95,8 @@ button:disabled { cursor: default; }
 .opt:disabled { color: var(--ink-muted); }
 .opt.right { background: var(--right); border-color: var(--right); color: #fff; }
 .opt.wrong { background: var(--wrong); border-color: var(--wrong); color: #fff; }
+.opt.right, .yp-val.right { animation: pop 0.35s ease; }
+.opt.wrong, .yp-val.wrong { animation: shake 0.4s ease; }
 
 /* Guess the year: big year readout, a slider with ±1/±10 steps, and a confirm button. */
 .opts-year { display: block; }
@@ -142,6 +148,12 @@ button:disabled { cursor: default; }
     font-family: var(--body-strong);
 }
 .brag:hover { background: var(--tile-hover); }
+/* The facts behind the answer, and a bar that drains until the next question appears. */
+.reveal { min-height: 1.5em; max-width: 40em; margin: 0 auto 8px; text-align: center; font-size: 0.95rem; line-height: 1.6; color: var(--ink-muted); }
+.auto { width: min(240px, 60%); height: 2px; margin: 0 auto 12px; background: var(--tile-border); visibility: hidden; }
+.auto > span { display: block; height: 100%; background: var(--accent); transform-origin: right; }
+.auto.on { visibility: visible; }
+.auto.on > span { animation: drain var(--ms, 1.5s) linear both; }
 .crowd { min-height: 1.5em; margin: 0 0 8px; text-align: center; font-size: 0.95rem; color: var(--accent); }
 .toast {
     position: fixed;
@@ -172,10 +184,15 @@ button:disabled { cursor: default; }
 .result .brag { text-decoration: none; }
 
 .hint { margin: 0 0 12px; text-align: center; font-size: 0.8rem; color: var(--ink-muted); }
+/* Keyboard tips mean nothing on touch screens. */
+@media (hover: none) { .hint { display: none; } }
 .noscript { text-align: center; color: var(--ink); }
 
 :is(.chip-btn, .opt, .next, .brag, .yp-step, .yp-range):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+@keyframes pop { 50% { transform: scale(1.05); } }
+@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+@keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

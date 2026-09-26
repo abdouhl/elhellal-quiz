@@ -116,6 +116,12 @@ export function settleYear(opts: HTMLElement, ok: boolean) {
     opts.querySelector(".yp-val")?.classList.add(ok ? "right" : "wrong");
 }
 
+/** Answers before the install banner may show (see Layout.astro), so it never greets a first-time visitor. */
+export function countAnswer() {
+    store.set("quiz.answered", String((Number(store.get("quiz.answered")) || 0) + 1));
+    dispatchEvent(new Event("quiz:answered"));
+}
+
 export const ar = (n: number) => String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
 
 /** Crowd numbers are hidden until a question has enough answers to mean something. */
@@ -140,13 +146,27 @@ export async function recordAnswer(id: string, ok: boolean): Promise<Crowd | nul
     }
 }
 
-/** The question's totals so far, or null when stats are unavailable. */
-export async function fetchCrowd(id: string): Promise<Crowd | null> {
+/** Percent correct for every question with enough answers, for the deck's difficulty; empty when unavailable. */
+export async function fetchRates(): Promise<Map<string, number>> {
     try {
-        const res = await fetch(`/api/answer?id=${encodeURIComponent(id)}`);
-        return res.ok ? await res.json() : null;
+        const res = await fetch("/api/answer");
+        return res.ok ? new Map(Object.entries((await res.json()) as Record<string, number>)) : new Map();
     } catch {
-        return null;
+        return new Map();
+    }
+}
+
+/** Flags the question as wrong or unclear; resolves to whether the flag was stored. */
+export async function reportQuestion(id: string): Promise<boolean> {
+    try {
+        const res = await fetch("/api/report", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id }),
+        });
+        return res.ok;
+    } catch {
+        return false;
     }
 }
 

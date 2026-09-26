@@ -46,7 +46,7 @@ import "../styles/quiz.css";
 <script>
     import { CATEGORY_ICONS, CATEGORY_LABELS, DAILY_SIZE, dailyIds, dayKey, dayNumber, questionById } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { SITE, ar, crowdLine, recordAnswer, renderAnswers, settleYear, shareWithFeedback, showClaim, showPicture, store } from "../game/client";
+    import { SITE, ar, countAnswer, crowdLine, recordAnswer, renderAnswers, settleYear, shareWithFeedback, showClaim, showPicture, store } from "../game/client";
 
     interface DailyState {
         day: string;
@@ -157,6 +157,7 @@ import "../styles/quiz.css";
         state.hits.push(ok);
         save();
         if (state.hits.length === state.ids.length) finishDay();
+        countAnswer();
         recordAnswer(q.id, ok).then((c) => {
             if (question === q) el.crowd.textContent = crowdLine(c);
         });

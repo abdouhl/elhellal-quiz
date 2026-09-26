@@ -13,11 +13,10 @@ const initial = initialId ? questionById(initialId) : null;
 
 <main id="main-content" class="app">
     <div class="topbar" aria-live="polite">
-        <span id="best" class="chip" title="الأفضل">★ …</span>
-        <span id="stat" class="chip chip-n" title="النتيجة">…</span>
+        <span id="streak" class="chip chip-n" title="إجابات صحيحة متتالية">🔥 …</span>
+        <span id="best" class="chip" title="أفضل سلسلة">★ …</span>
         <span class="topbar-end">
-            <a class="chip chip-btn" href="/daily/">📅 تحدي اليوم</a>
-            <button type="button" id="share" class="chip chip-btn">تحدَّ صديقًا ↗</button>
+            <button type="button" id="report" class="chip chip-btn chip-icon" title="الإبلاغ عن خطأ في هذا السؤال" aria-label="الإبلاغ عن خطأ في هذا السؤال">⚑</button>
         </span>
     </div>
 
@@ -45,46 +44,51 @@ const initial = initialId ? questionById(initialId) : null;
 
     <div class="foot">
         <p id="feedback" class="feedback" role="status"></p>
-        <button type="button" id="brag" class="brag" hidden>شارك سلسلتك 🔥</button>
+        <button type="button" id="brag" class="brag" hidden>شارك رقمك القياسي 🔥</button>
         <a id="next" class="next" href="/" hidden>التالي ←</a>
     </div>
-    <p id="crowd" class="crowd"></p>
+    <p id="reveal" class="reveal"></p>
+    <div id="auto" class="auto" aria-hidden="true"><span></span></div>
 
-    <p class="hint">اضغط ١ – ٤ للإجابة، وEnter للسؤال التالي.</p>
+    <p class="hint">اضغط ١ – ٤ للإجابة، وأي مكان للمتابعة.</p>
     <noscript><p class="noscript">هذه اللعبة تحتاج إلى تفعيل جافاسكربت.</p></noscript>
 </main>
 
 <script>
-    import { CATEGORY_ICONS, CATEGORY_LABELS, createDeck, difficultyFor, penaltyFor, pointsFor, questionById, questionTitle, timeLimitFor } from "../game/engine";
+    import { CATEGORY_ICONS, CATEGORY_LABELS, createDeck, questionById } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { SITE, ar, crowdLine, crowdPercent, fetchCrowd, recordAnswer, renderAnswers, settleYear, shareWithFeedback, showClaim, showPicture, store } from "../game/client";
-    import type { Crowd } from "../game/client";
+    import { SITE, ar, countAnswer, fetchRates, recordAnswer, renderAnswers, reportQuestion, settleYear, shareWithFeedback, showClaim, showPicture, store, toast } from "../game/client";
 
-    const START_SCORE = 500;
     // At most one vignette opportunity per minute: once this much time has passed, the next question
     // is opened as a real page load via a link click, which is what lets AdSense show a vignette ad.
     const AD_INTERVAL_MS = 60_000;
+    /** How long a result stays up before the next question appears on its own; facts add reading time. */
+    const SHOW_RIGHT_MS = 1200;
+    const SHOW_WRONG_MS = 2600;
+    const SHOW_REVEAL_MS = 1400;
     const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
     const el = {
-        stat: $("stat"),
+        main: $("main-content"),
+        streak: $("streak"),
         best: $("best"),
-        qCat: $("q-cat"),
+        report: $<HTMLButtonElement>("report"),
         qText: $("q-text"),
+        qCat: $("q-cat"),
         opts: $("opts"),
         card: $("card"),
         feedback: $("feedback"),
+        reveal: $("reveal"),
+        auto: $("auto"),
         next: $<HTMLAnchorElement>("next"),
-        crowd: $("crowd"),
-        share: $("share"),
         brag: $("brag"),
     };
 
-    // The score carries across pages, so a visitor arriving from a pin keeps it when they continue.
-    const savedScore = store.get("quiz.score");
-    let score = savedScore === null ? START_SCORE : Number(savedScore) || 0;
-    let best = Math.max(Number(store.get("quiz.best")) || 0, score);
+    // The streak carries across pages, so a visitor arriving from a pin keeps it when they continue.
     let streak = Number(store.get("quiz.streak")) || 0;
+    let best = Math.max(Number(store.get("quiz.bestStreak")) || 0, streak);
+    /** Whether the current streak has beaten the previous best, which is when sharing it is offered. */
+    let record = false;
     if (!store.get("quiz.adAt")) store.set("quiz.adAt", String(Date.now()));
     const adDue = () => Date.now() - (Number(store.get("quiz.adAt")) || 0) >= AD_INTERVAL_MS;
     /** Set when the next question will open as its own page (a vignette opportunity). */
@@ -96,22 +100,33 @@ const initial = initialId ? questionById(initialId) : null;
     } catch {}
     // Ask the browser not to evict the saved progress (matters most for the installed PWA).
     navigator.storage?.persist?.().catch(() => {});
-    const deck = createDeck("all", Math.random, solved);
-    /** When the current question appeared, for the speed bonus. */
-    let shownAt = 0;
-    /** Crowd totals for the question on screen, fetched as it appears, to price it by difficulty. */
-    let before: Crowd | null = null;
+    /** Percent correct per question, filled in once loaded; until then every question counts as medium. */
+    let rates = new Map<string, number>();
+    fetchRates().then((r) => (rates = r));
+    // Easy questions first, harder ones mixed in as the streak grows.
+    const deck = createDeck("all", Math.random, solved, {
+        correctRate: (id) => rates.get(id) ?? null,
+        level: () => Math.min(0.75, 0.15 + streak * 0.05),
+    });
     let question: Question | null = null;
+    /** Drawn when an answer is given, so its picture can load while the result is showing. */
+    let upcoming: Question | null = null;
     let locked = false;
     let advanceTimer: number | undefined;
-    /** Crowd totals for the question on screen, once it has been answered. */
-    let crowd: Crowd | null = null;
     /** The streak the last wrong answer ended, offered as a brag. */
     let lostStreak = 0;
 
-    function renderStats() {
-        el.stat.textContent = ar(score);
+    function renderStats(bump = false) {
+        el.streak.textContent = `🔥 ${ar(streak)}`;
         el.best.textContent = `★ ${ar(best)}`;
+        if (bump) replay(el.streak, "bump");
+    }
+
+    /** Restarts a CSS animation class on `node`. */
+    function replay(node: HTMLElement, cls: string) {
+        node.classList.remove(cls);
+        void node.offsetWidth;
+        node.classList.add(cls);
     }
 
     /** The /q/<id> page's answer and links, which only apply to the question the page was opened on. */
@@ -126,42 +141,55 @@ const initial = initialId ? questionById(initialId) : null;
         el.qText.classList.toggle("is-quote", q.isQuote);
         showClaim(q);
         renderAnswers(q, el.opts, guessYear);
+        showPicture(q);
         el.feedback.textContent = "";
         el.feedback.className = "feedback";
+        el.reveal.textContent = "";
+        el.auto.classList.remove("on");
         el.next.hidden = true;
         el.next.href = "/";
-        el.crowd.textContent = "";
         el.brag.hidden = true;
-        crowd = null;
-        before = null;
-        fetchCrowd(q.id).then((c) => {
-            if (question === q) before = c;
-        });
-        shownAt = performance.now();
-        // The clock starts when the picture is visible, not while it downloads.
-        showPicture(q, () => {
-            if (question === q && !locked) shownAt = performance.now();
-        });
+        el.report.disabled = false;
         pageTurn = false;
-        el.card.classList.remove("card-in");
-        void el.card.offsetWidth;
-        el.card.classList.add("card-in");
+        replay(el.card, "card-in");
     }
 
     function nextQuestion() {
         clearTimeout(advanceTimer);
-        renderQuestion(deck.next());
+        advanceTimer = undefined;
+        renderQuestion(upcoming ?? deck.next());
+        upcoming = null;
         renderStats();
     }
 
-    /** Shows the "next" control; when an ad is due it links to the next question's own page. */
+    /** Draws the next question now and starts loading its picture. */
+    function prepareNext() {
+        upcoming = deck.next();
+        if (upcoming.image) new Image().src = upcoming.image;
+    }
+
+    /** Moves on by itself after `ms`, with a draining bar; a tap anywhere moves on sooner. */
+    function autoAdvance(ms: number) {
+        el.auto.style.setProperty("--ms", `${ms}ms`);
+        replay(el.auto, "on");
+        advanceTimer = window.setTimeout(nextQuestion, ms);
+    }
+
+    /** Shows the "next" control and waits for it; when an ad is due it links to the next question's own page. */
     function showNext() {
         if (adDue()) {
             pageTurn = true;
-            el.next.href = `/q/${deck.next().id}/`;
+            el.next.href = `/q/${upcoming!.id}/`;
         }
         el.next.hidden = false;
         el.next.focus();
+    }
+
+    /** Taps and keys after an answer: follow the "next" control if it is up, else skip the wait. */
+    function proceed() {
+        if (!locked) return;
+        if (!el.next.hidden) el.next.click();
+        else if (advanceTimer !== undefined) nextQuestion();
     }
 
     function answer(i: number) {
@@ -186,50 +214,39 @@ const initial = initialId ? questionById(initialId) : null;
         if (locked || !question) return;
         locked = true;
         const q = question;
-        const timeLeft = 1 - (performance.now() - shownAt) / 1000 / timeLimitFor(q);
-        const difficulty = difficultyFor(crowdPercent(before));
-        const reveal = [note, q.reveal].filter(Boolean).join(" · ");
-        recordAnswer(q.id, ok).then((c) => {
-            if (question !== q) return;
-            crowd = c;
-            el.crowd.textContent = crowdLine(c);
-        });
+        recordAnswer(q.id, ok);
+        countAnswer();
 
         if (ok) {
             streak++;
-            store.set("quiz.streak", String(streak));
             solved.add(q.id);
             store.set("quiz.solved", JSON.stringify([...solved]));
-            const pts = pointsFor(streak, timeLeft, difficulty);
-            score += pts;
-            store.set("quiz.score", String(score));
-            if (score > best) {
-                best = score;
-                store.set("quiz.best", String(best));
+            if (streak > best) {
+                best = streak;
+                record = streak > 1;
+                store.set("quiz.bestStreak", String(best));
             }
-            let msg = `إجابة صحيحة! +${ar(pts)}`;
-            if (timeLeft > 0.6) msg += " ⚡";
-            if (streak >= 3) msg += ` 🔥 ${ar(streak)} متتالية`;
-            el.feedback.textContent = reveal ? `${msg} — ${reveal}` : msg;
-            el.feedback.className = "feedback ok";
-            renderStats();
-            if (adDue()) showNext();
-            // Leave time to read the facts behind the answer.
-            else advanceTimer = window.setTimeout(nextQuestion, reveal ? 3000 : 1300);
-            return;
+        } else {
+            navigator.vibrate?.([40, 60, 40]);
+            deck.retry(q.id);
+            lostStreak = streak;
+            streak = 0;
         }
+        store.set("quiz.streak", String(streak));
+        renderStats(ok);
 
-        lostStreak = streak;
-        el.brag.hidden = lostStreak < 3;
-        streak = 0;
-        store.set("quiz.streak", "0");
-        const lost = Math.min(penaltyFor(timeLeft, difficulty), score);
-        score -= lost;
-        store.set("quiz.score", String(score));
-        el.feedback.textContent = `${lost ? `−${ar(lost)} · ` : ""}${reveal || `الإجابة الصحيحة: ${q.options[q.answer]}`}`;
-        el.feedback.className = "feedback bad";
-        showNext();
-        renderStats();
+        el.feedback.textContent = [ok ? "صحيح ✓" : "خطأ ✗", note].filter(Boolean).join(" · ");
+        el.feedback.className = ok ? "feedback ok" : "feedback bad";
+        const reveal = q.reveal || (ok || q.year ? "" : `الإجابة الصحيحة: ${q.options[q.answer]}`);
+        el.reveal.textContent = reveal;
+        prepareNext();
+
+        // A broken record is worth sharing: wait for the player instead of moving on.
+        const brag = !ok && record && lostStreak >= 3;
+        if (!ok) record = false;
+        el.brag.hidden = !brag;
+        if (brag || adDue()) showNext();
+        else autoAdvance((ok ? SHOW_RIGHT_MS : SHOW_WRONG_MS) + (q.reveal ? SHOW_REVEAL_MS : 0));
     }
 
     el.next.addEventListener("click", (e) => {
@@ -241,20 +258,23 @@ const initial = initialId ? questionById(initialId) : null;
         e.preventDefault();
         nextQuestion();
     });
-    el.share.addEventListener("click", () => {
-        const q = question;
-        if (!q) return;
-        const pct = crowdPercent(crowd);
-        const hook = pct !== null && pct <= 50 ? `${ar(pct)}٪ فقط أجابوا بشكل صحيح. هل تعرف الإجابة؟` : "هل تعرف الإجابة؟ 🤔";
-        const text = q.image ? `${q.text} 👀` : questionTitle(q);
-        shareWithFeedback(`${text}\n\n${hook}`, `${SITE}/q/${q.id}/`);
-    });
     el.brag.addEventListener("click", () =>
-        shareWithFeedback(`حققت ${ar(lostStreak)} إجابات صحيحة متتالية 🔥 في اختبار الهلال. هل تتفوق عليّ؟`, `${SITE}/`),
+        shareWithFeedback(`رقمي القياسي ${ar(lostStreak)} إجابات صحيحة متتالية 🔥 في اختبار الهلال. هل تتفوق عليّ؟`, `${SITE}/`),
     );
+    el.report.addEventListener("click", async () => {
+        if (!question) return;
+        el.report.disabled = true;
+        const sent = await reportQuestion(question.id);
+        toast(sent ? "شكرًا! سنراجع هذا السؤال" : "تعذّر الإرسال، حاول لاحقًا");
+        if (!sent) el.report.disabled = false;
+    });
     el.opts.addEventListener("click", (e) => {
         const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".opt");
         if (b && !b.disabled) answer(Number(b.dataset.i));
+    });
+    // Anywhere that isn't a control moves on once the question is answered.
+    el.main.addEventListener("click", (e) => {
+        if (!(e.target as HTMLElement).closest("button, a, input")) proceed();
     });
     document.addEventListener("keydown", (e) => {
         if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -262,7 +282,10 @@ const initial = initialId ? questionById(initialId) : null;
         if (idx >= 0) {
             const b = el.opts.children[idx] as HTMLButtonElement | undefined;
             if (b && !b.disabled) answer(idx);
-        } else if (e.key === "Enter" && !el.next.hidden && document.activeElement !== el.next) el.next.click();
+        } else if ((e.key === "Enter" || e.key === " ") && locked && !(document.activeElement as HTMLElement | null)?.closest("button, a")) {
+            e.preventDefault();
+            proceed();
+        }
     });
 
     // A pinned question (already rendered server-side with the same seeded options) or a random start.

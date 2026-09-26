@@ -55,6 +55,7 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
     <slot />
 
     <footer class="site-footer">
+        <a href="/daily/">تحدي اليوم</a>
         <a href="/c/">كل الأسئلة</a>
         <a href="https://elhellal.com">الهلال</a>
     </footer>
@@ -85,6 +86,21 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
                 if (Date.now() - Number(localStorage.getItem(KEY) || 0) < SNOOZE_MS) return;
             } catch {}
 
+            // Only once the visitor has played a little, so the banner never greets a newcomer.
+            const ENGAGED = 10;
+            const engaged = () => {
+                try {
+                    return Number(localStorage.getItem("quiz.answered")) >= ENGAGED;
+                } catch {
+                    return false;
+                }
+            };
+            const whenEngaged = (fn) => {
+                if (engaged()) return fn();
+                const on = () => engaged() && (removeEventListener("quiz:answered", on), fn());
+                addEventListener("quiz:answered", on);
+            };
+
             const cta = document.getElementById("install-cta");
             const btn = document.getElementById("install-cta-btn");
             const desc = document.getElementById("install-cta-desc");
@@ -99,7 +115,7 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
                 // iOS has no install prompt API: show manual instructions instead.
                 desc.textContent = "اضغط على زر المشاركة ⎋ ثم «إضافة إلى الشاشة الرئيسية».";
                 btn.hidden = true;
-                setTimeout(() => (cta.hidden = false), 3000);
+                whenEngaged(() => setTimeout(() => (cta.hidden = false), 3000));
                 return;
             }
 
@@ -107,7 +123,7 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
             addEventListener("beforeinstallprompt", (e) => {
                 e.preventDefault();
                 deferred = e;
-                cta.hidden = false;
+                whenEngaged(() => deferred && (cta.hidden = false));
             });
             btn.addEventListener("click", async () => {
                 if (!deferred) return;
