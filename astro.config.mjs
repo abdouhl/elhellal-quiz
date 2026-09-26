@@ -4,6 +4,6 @@ import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
   site: 'https://quiz.elhellal.com',
-  integrations: [sitemap({ filter: (page) => !page.includes('/q/') })],
+  integrations: [sitemap()],
   adapter: cloudflare(),
 });

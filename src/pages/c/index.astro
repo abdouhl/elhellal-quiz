@@ -1,0 +1,32 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { CATEGORY_ICONS, CATEGORY_LABELS } from "../../game/engine";
+import { SITE, categories, categoryIds, hubUrl } from "../../game/seo";
+import "../../styles/quiz.css";
+
+const cats = categories();
+const total = cats.reduce((n, c) => n + categoryIds(c).length, 0);
+const ar = (n: number) => n.toLocaleString("ar-EG");
+---
+
+<Layout
+    pageTitle="كل أسئلة اختبار الهلال — أسئلة ثقافية مع الإجابات"
+    pageDescription={`${ar(total)} سؤال ثقافي بالعربية مع الإجابات: جغرافيا، علوم، تاريخ، أدب، أعلام الدول، مشاهير، معالم، صح أم خطأ، و«من قال؟».`}
+    canonicalUrl={`${SITE}/c/`}
+    ogImage={`${SITE}/og/home.png`}
+>
+    <main id="main-content" class="hub">
+        <h1>كل أسئلة اختبار الهلال</h1>
+        <p class="hub-intro">{ar(total)} سؤال في {ar(cats.length)} قسمًا، لكل منها إجابته. اختر قسمًا أو ابدأ اللعب مباشرة.</p>
+        <a class="hub-play" href="/">ابدأ الاختبار ←</a>
+        <ul class="hub-cats">
+            {cats.map((c) => (
+                <li>
+                    <a href={hubUrl(c)}>
+                        {CATEGORY_ICONS[c]} {CATEGORY_LABELS[c]} <span class="hub-count">· {ar(categoryIds(c).length)} سؤال</span>
+                    </a>
+                </li>
+            ))}
+        </ul>
+    </main>
+</Layout>

@@ -19,6 +19,7 @@ import "../styles/quiz.css";
                 <figcaption><a href="#" target="_blank" rel="noopener" hidden></a></figcaption>
             </figure>
             <h1 id="q-text" class="q-text">جارٍ التحميل…</h1>
+            <p id="q-claim" class="q-claim" hidden></p>
         </section>
         <div id="opts" class="opts" role="group" aria-label="الخيارات"></div>
         <div class="foot">
@@ -45,7 +46,7 @@ import "../styles/quiz.css";
 <script>
     import { CATEGORY_ICONS, CATEGORY_LABELS, DAILY_SIZE, dailyIds, dayKey, dayNumber, questionById } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { SITE, ar, crowdLine, recordAnswer, shareWithFeedback, showPicture, store } from "../game/client";
+    import { SITE, ar, crowdLine, recordAnswer, renderAnswers, settleYear, shareWithFeedback, showClaim, showPicture, store } from "../game/client";
 
     interface DailyState {
         day: string;
@@ -112,16 +113,8 @@ import "../styles/quiz.css";
         el.qText.textContent = q.text;
         el.qText.classList.toggle("is-quote", q.isQuote);
         showPicture(q);
-        el.opts.replaceChildren(
-            ...q.options.map((text, i) => {
-                const b = document.createElement("button");
-                b.type = "button";
-                b.className = "opt";
-                b.dataset.i = String(i);
-                b.textContent = text;
-                return b;
-            }),
-        );
+        showClaim(q);
+        renderAnswers(q, el.opts, guessYear);
         el.feedback.textContent = "";
         el.feedback.className = "feedback";
         el.crowd.textContent = "";
@@ -139,14 +132,28 @@ import "../styles/quiz.css";
     }
 
     function answer(i: number) {
+        if (locked || !question || question.year) return;
+        const buttons = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")];
+        buttons.forEach((b) => (b.disabled = true));
+        buttons[question.answer].classList.add("right");
+        if (i !== question.answer) buttons[i].classList.add("wrong");
+        settle(i === question.answer);
+    }
+
+    function guessYear(guess: number) {
+        if (locked || !question?.year) return;
+        const { answer, tolerance } = question.year;
+        const ok = Math.abs(guess - answer) <= tolerance;
+        settleYear(el.opts, ok);
+        settle(ok, guess === answer ? "بالضبط! 🎯" : `إجابتك ${ar(guess)}م`);
+    }
+
+    /** Records the answer to the question on screen; `note` adds to the feedback (the year guessed). */
+    function settle(ok: boolean, note = "") {
         if (locked || !question) return;
         locked = true;
         const q = question;
-        const ok = i === q.answer;
-        const buttons = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")];
-        buttons.forEach((b) => (b.disabled = true));
-        buttons[q.answer].classList.add("right");
-        if (!ok) buttons[i].classList.add("wrong");
+        const reveal = [note, q.reveal].filter(Boolean).join(" · ");
         state.hits.push(ok);
         save();
         if (state.hits.length === state.ids.length) finishDay();
@@ -154,12 +161,12 @@ import "../styles/quiz.css";
             if (question === q) el.crowd.textContent = crowdLine(c);
         });
 
-        el.feedback.textContent = ok ? "إجابة صحيحة!" : `الإجابة الصحيحة: ${q.options[q.answer]}`;
+        el.feedback.textContent = ok ? ["إجابة صحيحة!", reveal].filter(Boolean).join(" — ") : reveal || `الإجابة الصحيحة: ${q.options[q.answer]}`;
         el.feedback.className = ok ? "feedback ok" : "feedback bad";
         const last = state.hits.length === state.ids.length;
         el.next.textContent = last ? "النتيجة ←" : "التالي ←";
         renderProgress();
-        if (ok && !last) advanceTimer = window.setTimeout(advance, 1300);
+        if (ok && !last) advanceTimer = window.setTimeout(advance, reveal ? 3000 : 1300);
         else {
             el.next.hidden = false;
             el.next.focus();

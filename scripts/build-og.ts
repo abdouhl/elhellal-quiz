@@ -126,22 +126,28 @@ function questionSvg(q: Question): string {
         question = pictureSvg(q, PAD, 104, 540, 240) + textBlock(lines, W - PAD, 240 - ((lines.length - 1) * lh) / 2, size, lh, COLORS.ink, "end", 700);
     } else {
         const text = q.isQuote ? `«${q.text}»` : q.text;
+        // A true-or-false claim gets its own accent line under the question.
+        const claim = q.claim ? [`«${q.claim}»\u200F`] : [];
         const size = text.length <= 50 ? 54 : text.length <= 100 ? 42 : 32;
-        const lines = wrap(text, size, W - 2 * PAD, 3, 700);
+        const lines = wrap(text, size, W - 2 * PAD, 3 - claim.length, 700);
         const lh = Math.round(size * 1.45);
-        const qTop = 150 + Math.round(((3 - lines.length) * lh) / 2);
-        question = textBlock(lines, W / 2, qTop, size, lh, COLORS.ink, "middle", 700);
+        const qTop = 150 + Math.round(((3 - lines.length - claim.length) * lh) / 2);
+        question =
+            textBlock(lines, W / 2, qTop, size, lh, COLORS.ink, "middle", 700) +
+            textBlock(claim, W / 2, qTop + lines.length * lh, size, lh, COLORS.accent, "middle", 700);
     }
 
-    // 2×2 option tiles, first option top-right to match the RTL page.
+    // 2×2 option tiles, first option top-right to match the RTL page; a guess-the-year question gets one wide tile.
+    const options = q.year ? ["في أي عام؟"] : q.options;
     const gap = 20;
-    const tileW = (W - 2 * PAD - gap) / 2;
+    const cols = options.length === 1 ? 1 : 2;
+    const tileW = (W - 2 * PAD - (cols - 1) * gap) / cols;
     const tileH = 84;
     const top = 368;
-    const tiles = q.options
+    const tiles = options
         .map((o, i) => {
-            const col = i % 2;
-            const row = Math.floor(i / 2);
+            const col = i % cols;
+            const row = Math.floor(i / cols);
             const x = W - PAD - (col + 1) * tileW - col * gap;
             const y = top + row * (tileH + gap);
             const oSize = 26;

@@ -39,6 +39,83 @@ export function showPicture(q: Question, onShown: () => void = () => {}) {
     if (img.complete) onShown();
 }
 
+/** Shows a true-or-false question's claim under the question (or hides the line). */
+export function showClaim(q: Question) {
+    const claim = document.getElementById("q-claim")!;
+    claim.textContent = q.claim ? `«${q.claim}»` : "";
+    claim.hidden = !q.claim;
+}
+
+/**
+ * Fills `opts` with the question's option buttons, or for a guess-the-year question with a year
+ * picker that calls `onYear` with the guess once confirmed.
+ */
+export function renderAnswers(q: Question, opts: HTMLElement, onYear: (guess: number) => void) {
+    opts.classList.toggle("opts-year", !!q.year);
+    if (q.year) return opts.replaceChildren(yearPicker(q.year, onYear));
+    opts.replaceChildren(
+        ...q.options.map((text, i) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "opt";
+            b.dataset.i = String(i);
+            b.textContent = text;
+            return b;
+        }),
+    );
+}
+
+function yearPicker({ min, max, tolerance }: NonNullable<Question["year"]>, onYear: (guess: number) => void): HTMLElement {
+    const box = document.createElement("div");
+    box.className = "yp";
+    box.innerHTML = `
+        <output class="yp-val"></output>
+        <div class="yp-row" dir="ltr">
+            <button type="button" class="yp-step" data-d="-10">−١٠</button>
+            <button type="button" class="yp-step" data-d="-1">−١</button>
+            <input type="range" class="yp-range" aria-label="السنة" />
+            <button type="button" class="yp-step" data-d="1">+١</button>
+            <button type="button" class="yp-step" data-d="10">+١٠</button>
+        </div>
+        <button type="button" class="next yp-go">تأكيد</button>
+        <p class="yp-note"></p>`;
+    const val = box.querySelector("output")!;
+    const range = box.querySelector("input")!;
+    const go = box.querySelector<HTMLButtonElement>(".yp-go")!;
+    box.querySelector(".yp-note")!.textContent = `يُقبل فرق حتى ${ar(tolerance)} سنوات`;
+    range.min = String(min);
+    range.max = String(max);
+    range.value = String(Math.round((min + max) / 20) * 10);
+    const show = () => (val.textContent = `${ar(Number(range.value))}م`);
+    show();
+    const submit = () => {
+        if (go.disabled) return;
+        box.querySelectorAll("button, input").forEach((c) => ((c as HTMLButtonElement).disabled = true));
+        onYear(Number(range.value));
+    };
+    range.addEventListener("input", show);
+    box.addEventListener("click", (e) => {
+        const step = (e.target as HTMLElement).closest<HTMLButtonElement>(".yp-step");
+        if (step) {
+            range.value = String(Number(range.value) + Number(step.dataset.d));
+            show();
+        } else if ((e.target as HTMLElement).closest(".yp-go")) submit();
+    });
+    // Enter confirms; kept from the page's own Enter handler, which would jump straight past the result.
+    box.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        e.stopPropagation();
+        submit();
+    });
+    return box;
+}
+
+/** Marks the year picker with how the guess went. */
+export function settleYear(opts: HTMLElement, ok: boolean) {
+    opts.querySelector(".yp-val")?.classList.add(ok ? "right" : "wrong");
+}
+
 export const ar = (n: number) => String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
 
 /** Crowd numbers are hidden until a question has enough answers to mean something. */

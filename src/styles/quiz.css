@@ -58,6 +58,8 @@ button:disabled { cursor: default; }
 }
 .q-text.is-quote { max-width: 30em; font-size: 1.7rem; line-height: 1.8; }
 .q-text.has-pic { font-size: 1.6rem; }
+/* True or false: the proposed answer, under the question. */
+.q-claim { margin: 16px 0 0; font-family: var(--body-strong); font-size: 2.2rem; line-height: 1.4; color: var(--accent); }
 
 .q-fig { margin: 0 0 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .q-fig[hidden] { display: none; }
@@ -89,6 +91,29 @@ button:disabled { cursor: default; }
 .opt:disabled { color: var(--ink-muted); }
 .opt.right { background: var(--right); border-color: var(--right); color: #fff; }
 .opt.wrong { background: var(--wrong); border-color: var(--wrong); color: #fff; }
+
+/* Guess the year: big year readout, a slider with ±1/±10 steps, and a confirm button. */
+.opts-year { display: block; }
+.yp { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.yp-val { font-family: var(--body-strong); font-size: 3.2rem; line-height: 1.2; color: var(--accent); font-variant-numeric: tabular-nums; }
+.yp-val.right { color: var(--right); }
+.yp-val.wrong { color: var(--wrong); }
+.yp-row { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 640px; }
+.yp-range { flex: 1; min-width: 0; accent-color: var(--accent); height: 32px; }
+.yp-step {
+    flex: none;
+    min-width: 52px;
+    padding: 10px 8px;
+    border: 1px solid var(--tile-border);
+    background: var(--tile);
+    color: var(--ink);
+    cursor: pointer;
+    font-family: var(--body-strong);
+}
+.yp-step:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.yp-go { padding: 12px 40px; font-size: 1.15rem; }
+.yp-go:disabled { opacity: 0.5; }
+.yp-note { margin: 0; font-size: 0.85rem; color: var(--ink-muted); }
 
 .foot { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 64px; margin-top: 8px; }
 .feedback { margin: 0; color: var(--ink); }
@@ -149,12 +174,35 @@ button:disabled { cursor: default; }
 .hint { margin: 0 0 12px; text-align: center; font-size: 0.8rem; color: var(--ink-muted); }
 .noscript { text-align: center; color: var(--ink); }
 
-:is(.chip-btn, .opt, .next, .brag):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(.chip-btn, .opt, .next, .brag, .yp-step, .yp-range):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+/* /q/<id>: the answer (collapsed) and links to more questions, below the game. */
+.qa { max-width: 1000px; margin: 24px auto 0; padding: 0 16px; }
+.qa-answer { background: var(--tile); border: 1px solid var(--tile-border); padding: 14px 18px; }
+.qa-answer summary { cursor: pointer; color: var(--accent); font-family: var(--body-strong); }
+.qa-answer p { margin: 10px 0 0; }
+.qa-reveal { color: var(--ink-muted); }
+.qa-more h2, .hub h1 { font-size: 1.3rem; margin: 28px 0 12px; }
+.qa-more ul, .hub ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.qa-more a, .hub li a { display: block; padding: 12px 16px; background: var(--tile); border: 1px solid var(--tile-border); color: var(--ink); text-decoration: none; line-height: 1.6; }
+.qa-more a:hover, .hub li a:hover { border-color: var(--accent); color: var(--accent); }
+.qa-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+.qa-links a { flex: 1; text-align: center; }
+
+/* /c/ and /c/<category>: question lists by category. */
+.hub { max-width: 1000px; margin: 0 auto; padding: 20px 16px 0; }
+.hub-intro { color: var(--ink-muted); margin: 0 0 16px; }
+.hub-play { display: inline-block; margin: 0 0 20px; padding: 12px 28px; background: var(--accent); color: #000; text-decoration: none; font-family: var(--body-strong); }
+.hub-play:hover { background: var(--accent-hover); }
+.hub-cats { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.hub-count { color: var(--ink-muted); font-size: 0.9rem; }
+
+.site-footer { display: flex; justify-content: center; gap: 20px; }
+
 @media (max-width: 640px) {
     .chip { padding: 5px 9px; font-size: 0.9rem; }
     .foot { flex-wrap: wrap; }
@@ -168,4 +216,7 @@ button:disabled { cursor: default; }
     .q-fig[data-kind="face"] img { width: 30vh; height: 30vh; max-width: 70vw; max-height: 70vw; }
     .opts { grid-template-columns: 1fr; gap: 12px; }
     .opt { min-height: 72px; font-size: 1.35rem; }
+    .q-claim { font-size: 1.6rem; }
+    .yp-val { font-size: 2.6rem; }
+    .yp-step { min-width: 44px; padding: 10px 4px; }
 }

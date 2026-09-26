@@ -1,7 +1,8 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import Quiz from "../../components/Quiz.astro";
-import { allQuestionIds, questionById } from "../../game/engine";
+import { CATEGORY_ICONS, allQuestionIds, questionById } from "../../game/engine";
+import { SITE, qPath, answerText, clip, hubTitle, hubUrl, questionJsonLd, related, seoDescription, seoTitle } from "../../game/seo";
 
 export function getStaticPaths() {
     return allQuestionIds().map(([id]) => ({ params: { id } }));
@@ -9,15 +10,36 @@ export function getStaticPaths() {
 
 const { id } = Astro.params;
 const q = questionById(id!)!;
-const title = q.isQuote ? `من قال: «${q.text}»؟` : q.text;
+const title = seoTitle(q);
+const more = related(q);
 ---
 
 <Layout
-    pageTitle={`${title} — اختبار الهلال`}
-    pageDescription="هل تعرف الإجابة؟ جرّب هذا السؤال ثم تابع اختبار الهلال بأسئلة لا تنتهي."
-    canonicalUrl={`https://quiz.elhellal.com/q/${id}`}
-    ogImage={`https://quiz.elhellal.com/og/${id}.png`}
-    noindex
+    pageTitle={`${clip(title, 70)} — اختبار الهلال`}
+    pageDescription={seoDescription(q)}
+    canonicalUrl={`${SITE}${qPath(id!)}`}
+    ogImage={`${SITE}/og/${id}.png`}
 >
+    <script slot="head" type="application/ld+json" set:html={JSON.stringify(questionJsonLd(q))} />
     <Quiz initialId={id} />
+
+    <!-- Crawlable answer and links for this question; hidden by the game once it moves on to another one. -->
+    <section id="qa" class="qa" aria-labelledby="qa-title">
+        <details class="qa-answer">
+            <summary id="qa-title">اعرض الإجابة</summary>
+            <p>الإجابة الصحيحة: <strong>{answerText(q)}</strong></p>
+            {q.reveal && <p class="qa-reveal">{q.reveal}</p>}
+        </details>
+
+        <nav class="qa-more" aria-labelledby="qa-more-title">
+            <h2 id="qa-more-title">أسئلة مشابهة</h2>
+            <ul>
+                {more.map((r) => <li><a href={qPath(r.id)}>{clip(seoTitle(r), 90)}</a></li>)}
+            </ul>
+            <p class="qa-links">
+                <a href={hubUrl(q.category)}>{CATEGORY_ICONS[q.category]} {hubTitle(q.category)}</a>
+                <a href="/c/">جميع الأقسام</a>
+            </p>
+        </nav>
+    </section>
 </Layout>

@@ -1,0 +1,59 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { CATEGORY_ICONS, CATEGORY_LABELS, questionById } from "../../game/engine";
+import type { Category } from "../../game/engine";
+import { SITE, qPath, categories, categoryIds, clip, hubTitle, hubUrl, seoTitle } from "../../game/seo";
+import "../../styles/quiz.css";
+
+export function getStaticPaths() {
+    return categories().map((category) => ({ params: { category } }));
+}
+
+const category = Astro.params.category as Category;
+const questions = categoryIds(category).map((id) => questionById(id)!);
+const label = CATEGORY_LABELS[category];
+const title = hubTitle(category);
+const ar = (n: number) => n.toLocaleString("ar-EG");
+const url = `${SITE}${hubUrl(category)}`;
+const jsonLd = [
+    {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: title,
+        url,
+        inLanguage: "ar",
+        mainEntity: {
+            "@type": "ItemList",
+            numberOfItems: questions.length,
+            itemListElement: questions.map((q, i) => ({ "@type": "ListItem", position: i + 1, url: `${SITE}${qPath(q.id)}` })),
+        },
+    },
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+            { "@type": "ListItem", position: 1, name: "اختبار الهلال", item: `${SITE}/` },
+            { "@type": "ListItem", position: 2, name: "كل الأسئلة", item: `${SITE}/c/` },
+            { "@type": "ListItem", position: 3, name: title, item: url },
+        ],
+    },
+];
+---
+
+<Layout
+    pageTitle={`${title} (${ar(questions.length)} سؤال) — اختبار الهلال`}
+    pageDescription={`${ar(questions.length)} سؤال في قسم «${label}» بالعربية مع الإجابات، مثل: ${clip(seoTitle(questions[0]), 80)} اختبر معلوماتك الآن.`}
+    canonicalUrl={url}
+    ogImage={`${SITE}/og/home.png`}
+>
+    <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <main id="main-content" class="hub">
+        <h1>{CATEGORY_ICONS[category]} {title}</h1>
+        <p class="hub-intro">{ar(questions.length)} سؤال في قسم «{label}». افتح أي سؤال لتجرّب الإجابة وتعرف الحل.</p>
+        <a class="hub-play" href="/">العب الاختبار ←</a>
+        <ul>
+            {questions.map((q) => <li><a href={qPath(q.id)}>{clip(seoTitle(q), 110)}</a></li>)}
+        </ul>
+        <p class="qa-links"><a href="/c/">جميع الأقسام</a></p>
+    </main>
+</Layout>

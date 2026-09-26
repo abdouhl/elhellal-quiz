@@ -30,6 +30,7 @@ const initial = initialId ? questionById(initialId) : null;
         <h1 id="q-text" class:list={["q-text", { "is-quote": initial?.isQuote, "has-pic": initial?.image }]} data-id={initial ? initialId : undefined}>
             {initial ? initial.text : "جارٍ التحميل…"}
         </h1>
+        <p id="q-claim" class="q-claim" hidden={!initial?.claim}>{initial?.claim && `«${initial.claim}»`}</p>
     </section>
 
     <div id="opts" class="opts" role="group" aria-label="الخيارات">
@@ -54,9 +55,9 @@ const initial = initialId ? questionById(initialId) : null;
 </main>
 
 <script>
-    import { CATEGORY_ICONS, CATEGORY_LABELS, createDeck, difficultyFor, penaltyFor, pointsFor, questionById, timeLimitFor } from "../game/engine";
+    import { CATEGORY_ICONS, CATEGORY_LABELS, createDeck, difficultyFor, penaltyFor, pointsFor, questionById, questionTitle, timeLimitFor } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { SITE, ar, crowdLine, crowdPercent, fetchCrowd, recordAnswer, shareWithFeedback, showPicture, store } from "../game/client";
+    import { SITE, ar, crowdLine, crowdPercent, fetchCrowd, recordAnswer, renderAnswers, settleYear, shareWithFeedback, showClaim, showPicture, store } from "../game/client";
     import type { Crowd } from "../game/client";
 
     const START_SCORE = 500;
@@ -113,22 +114,18 @@ const initial = initialId ? questionById(initialId) : null;
         el.best.textContent = `★ ${ar(best)}`;
     }
 
+    /** The /q/<id> page's answer and links, which only apply to the question the page was opened on. */
+    const qa = document.getElementById("qa");
+
     function renderQuestion(q: Question) {
         question = q;
+        if (qa && q.id !== el.qText.dataset.id) qa.hidden = true;
         locked = false;
         el.qCat.textContent = `${CATEGORY_ICONS[q.category]} ${CATEGORY_LABELS[q.category]}`;
         el.qText.textContent = q.text;
         el.qText.classList.toggle("is-quote", q.isQuote);
-        el.opts.replaceChildren(
-            ...q.options.map((text, i) => {
-                const b = document.createElement("button");
-                b.type = "button";
-                b.className = "opt";
-                b.dataset.i = String(i);
-                b.textContent = text;
-                return b;
-            }),
-        );
+        showClaim(q);
+        renderAnswers(q, el.opts, guessYear);
         el.feedback.textContent = "";
         el.feedback.className = "feedback";
         el.next.hidden = true;
@@ -161,28 +158,44 @@ const initial = initialId ? questionById(initialId) : null;
     function showNext() {
         if (adDue()) {
             pageTurn = true;
-            el.next.href = `/q/${deck.next().id}`;
+            el.next.href = `/q/${deck.next().id}/`;
         }
         el.next.hidden = false;
         el.next.focus();
     }
 
     function answer(i: number) {
+        if (locked || !question || question.year) return;
+        const buttons = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")];
+        buttons.forEach((b) => (b.disabled = true));
+        buttons[question.answer].classList.add("right");
+        if (i !== question.answer) buttons[i].classList.add("wrong");
+        settle(i === question.answer);
+    }
+
+    function guessYear(guess: number) {
+        if (locked || !question?.year) return;
+        const { answer, tolerance } = question.year;
+        const ok = Math.abs(guess - answer) <= tolerance;
+        settleYear(el.opts, ok);
+        settle(ok, guess === answer ? "بالضبط! 🎯" : `إجابتك ${ar(guess)}م`);
+    }
+
+    /** Scores the answer to the question on screen; `note` adds to the feedback (the year guessed). */
+    function settle(ok: boolean, note = "") {
         if (locked || !question) return;
         locked = true;
         const q = question;
         const timeLeft = 1 - (performance.now() - shownAt) / 1000 / timeLimitFor(q);
         const difficulty = difficultyFor(crowdPercent(before));
-        const buttons = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")];
-        buttons.forEach((b) => (b.disabled = true));
-        buttons[q.answer].classList.add("right");
-        recordAnswer(q.id, i === q.answer).then((c) => {
+        const reveal = [note, q.reveal].filter(Boolean).join(" · ");
+        recordAnswer(q.id, ok).then((c) => {
             if (question !== q) return;
             crowd = c;
             el.crowd.textContent = crowdLine(c);
         });
 
-        if (i === q.answer) {
+        if (ok) {
             streak++;
             store.set("quiz.streak", String(streak));
             solved.add(q.id);
@@ -197,15 +210,15 @@ const initial = initialId ? questionById(initialId) : null;
             let msg = `إجابة صحيحة! +${ar(pts)}`;
             if (timeLeft > 0.6) msg += " ⚡";
             if (streak >= 3) msg += ` 🔥 ${ar(streak)} متتالية`;
-            el.feedback.textContent = msg;
+            el.feedback.textContent = reveal ? `${msg} — ${reveal}` : msg;
             el.feedback.className = "feedback ok";
             renderStats();
             if (adDue()) showNext();
-            else advanceTimer = window.setTimeout(nextQuestion, 1300);
+            // Leave time to read the facts behind the answer.
+            else advanceTimer = window.setTimeout(nextQuestion, reveal ? 3000 : 1300);
             return;
         }
 
-        buttons[i].classList.add("wrong");
         lostStreak = streak;
         el.brag.hidden = lostStreak < 3;
         streak = 0;
@@ -213,7 +226,7 @@ const initial = initialId ? questionById(initialId) : null;
         const lost = Math.min(penaltyFor(timeLeft, difficulty), score);
         score -= lost;
         store.set("quiz.score", String(score));
-        el.feedback.textContent = `${lost ? `−${ar(lost)} · ` : ""}الإجابة الصحيحة: ${q.options[q.answer]}`;
+        el.feedback.textContent = `${lost ? `−${ar(lost)} · ` : ""}${reveal || `الإجابة الصحيحة: ${q.options[q.answer]}`}`;
         el.feedback.className = "feedback bad";
         showNext();
         renderStats();
@@ -233,8 +246,8 @@ const initial = initialId ? questionById(initialId) : null;
         if (!q) return;
         const pct = crowdPercent(crowd);
         const hook = pct !== null && pct <= 50 ? `${ar(pct)}٪ فقط أجابوا بشكل صحيح. هل تعرف الإجابة؟` : "هل تعرف الإجابة؟ 🤔";
-        const text = q.isQuote ? `من قال: «${q.text}»؟` : q.image ? `${q.text} 👀` : q.text;
-        shareWithFeedback(`${text}\n\n${hook}`, `${SITE}/q/${q.id}`);
+        const text = q.image ? `${q.text} 👀` : questionTitle(q);
+        shareWithFeedback(`${text}\n\n${hook}`, `${SITE}/q/${q.id}/`);
     });
     el.brag.addEventListener("click", () =>
         shareWithFeedback(`حققت ${ar(lostStreak)} إجابات صحيحة متتالية 🔥 في اختبار الهلال. هل تتفوق عليّ؟`, `${SITE}/`),

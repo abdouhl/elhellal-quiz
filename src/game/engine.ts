@@ -1,8 +1,9 @@
 import bank from "../data/bank.json";
 import generated from "../data/generated.json";
 import pictures from "../data/pictures.json";
+import numbers from "../data/numbers.json";
 
-export type Category = "geo" | "sci" | "hist" | "gen" | "lang" | "lit" | "quote" | "flag" | "face" | "place";
+export type Category = "geo" | "sci" | "hist" | "gen" | "lang" | "lit" | "quote" | "flag" | "face" | "place" | "tf" | "first" | "more" | "year";
 export type CategoryFilter = Category | "all";
 
 export interface Question {
@@ -18,6 +19,12 @@ export interface Question {
     image?: string;
     credit?: string;
     creditUrl?: string;
+    /** true-or-false questions: the proposed answer to judge */
+    claim?: string;
+    /** shown once answered: the facts behind the answer (dates, sizes…) */
+    reveal?: string;
+    /** guess-the-year questions (no options): the answer, the picker's range, and the accepted error */
+    year?: { answer: number; min: number; max: number; tolerance: number };
 }
 
 export const CATEGORY_LABELS: Record<Category, string> = {
@@ -31,6 +38,10 @@ export const CATEGORY_LABELS: Record<Category, string> = {
     flag: "أعلام",
     face: "مشاهير",
     place: "معالم",
+    tf: "صح أم خطأ؟",
+    first: "أيهما أسبق؟",
+    more: "أكبر أم أصغر؟",
+    year: "في أي عام؟",
 };
 
 export const CATEGORY_ICONS: Record<Category, string> = {
@@ -44,6 +55,10 @@ export const CATEGORY_ICONS: Record<Category, string> = {
     flag: "🚩",
     face: "🧑",
     place: "🗺️",
+    tf: "⚖️",
+    first: "⏳",
+    more: "📏",
+    year: "📅",
 };
 
 type Source =
@@ -51,7 +66,11 @@ type Source =
     | { kind: "quote"; i: number }
     | { kind: "book-author"; i: number }
     | { kind: "author-book"; i: number }
-    | { kind: "pic"; i: number };
+    | { kind: "pic"; i: number }
+    | { kind: "tf"; i: number }
+    | { kind: "year"; i: number }
+    | { kind: "first"; a: number; b: number }
+    | { kind: "more"; m: number; a: number; b: number };
 
 type PicKind = "flag" | "face" | "place";
 /** Picture questions (built by scripts/build-pictures.ts): kind, slug, answer, distractor group, image, credit. */
@@ -62,7 +81,6 @@ const PIC_PROMPTS: Record<PicKind, string> = {
     place: "ما اسم هذا المعلم؟",
 };
 const picId = (i: number) => `p-${pics[i].k}-${pics[i].s}`;
-const picIndex = new Map(pics.map((_, i) => [picId(i), i]));
 
 const { authors, quotes, books } = generated as {
     authors: string[];
@@ -70,16 +88,54 @@ const { authors, quotes, books } = generated as {
     books: [string, number][];
 };
 
-// Every category → the items it can draw from.
-const pools: Record<Category, Source[]> = { geo: [], sci: [], hist: [], gen: [], lang: [], lit: [], quote: [], flag: [], face: [], place: [] };
-(bank as [Category, string, string, string[]][]).forEach(([c], i) => pools[c].push({ kind: "bank", i }));
-quotes.forEach((_, i) => pools.quote.push({ kind: "quote", i }));
-books.forEach((_, i) => {
-    pools.lit.push({ kind: "book-author", i });
-    pools.lit.push({ kind: "author-book", i });
-});
+type BankRow = [Category, string, string, string[]];
+const bankRows = bank as BankRow[];
+const { events, metrics } = numbers as {
+    /** [what happened, year CE] */
+    events: [string, number][];
+    /** a comparable quantity: its two prompts, unit, and [name, value] items */
+    metrics: { more: string; less: string; unit: string; items: [string, number][] }[];
+};
 
-pics.forEach((p, i) => pools[p.k].push({ kind: "pic", i }));
+/** `limit` seeded-random pairs of indexes into `values`, among those that `ok` accepts. */
+function pairs(seed: string, values: number[], ok: (x: number, y: number) => boolean, limit: number): [number, number][] {
+    const all: [number, number][] = [];
+    for (let a = 0; a < values.length; a++) for (let b = a + 1; b < values.length; b++) if (ok(values[a], values[b])) all.push([a, b]);
+    return shuffle(all, seeded(seed)).slice(0, limit);
+}
+
+const SRC_PREFIX = { bank: "b", quote: "q", "book-author": "ba", "author-book": "ab", tf: "t", year: "y" } as const;
+
+// Every category → the items it can draw from, and every question id → its source.
+const pools = Object.fromEntries(Object.keys(CATEGORY_LABELS).map((c) => [c, []])) as unknown as Record<Category, Source[]>;
+const registry = new Map<string, [Category, Source]>();
+function add(category: Category, src: Source) {
+    pools[category].push(src);
+    registry.set(srcId(src), [category, src]);
+}
+bankRows.forEach(([c], i) => add(c, { kind: "bank", i }));
+quotes.forEach((_, i) => add("quote", { kind: "quote", i }));
+books.forEach((_, i) => {
+    add("lit", { kind: "book-author", i });
+    add("lit", { kind: "author-book", i });
+});
+pics.forEach((p, i) => add(p.k, { kind: "pic", i }));
+/** Ids that existed before the number-based types; the daily challenge drew only from these until DAILY_V2. */
+const LEGACY_COUNT = registry.size;
+// "Which of the following…" makes no sense without the list, so those stay out of true-or-false.
+bankRows.forEach(([, q], i) => /مما يلي|أي من/.test(q) || add("tf", { kind: "tf", i }));
+// At least 5 years apart, so approximate dates can't make the answer arguable.
+for (const [a, b] of pairs("first", events.map(([, y]) => y), (x, y) => Math.abs(x - y) >= 5, 250)) add("first", { kind: "first", a, b });
+// At least 30% apart, so rounding and newer estimates can't flip the answer.
+metrics.forEach((m, mi) => {
+    for (const [a, b] of pairs(`more${mi}`, m.items.map(([, v]) => v), (x, y) => Math.max(x, y) >= 1.3 * Math.min(x, y), 60))
+        add("more", { kind: "more", m: mi, a, b });
+});
+events.forEach((_, i) => add("year", { kind: "year", i }));
+
+/** Arabic-Indic digits; years are written without thousands separators. */
+const num = (n: number, group = true) => n.toLocaleString("ar-EG", { useGrouping: group, maximumFractionDigits: 1 });
+const yearText = (y: number) => `${num(y, false)}م`;
 
 export const CATEGORIES = Object.keys(pools) as Category[];
 
@@ -131,9 +187,10 @@ function finish(
 }
 
 function build(category: Category, src: Source, rand: () => number): Question {
+    const id = srcId(src);
     switch (src.kind) {
         case "bank": {
-            const [c, q, a, w] = (bank as [Category, string, string, string[]][])[src.i];
+            const [c, q, a, w] = bankRows[src.i];
             return finish(c, `b${src.i}`, q, false, a, w, rand);
         }
         case "quote": {
@@ -162,38 +219,70 @@ function build(category: Category, src: Source, rand: () => number): Question {
             const q = finish(p.k, picId(src.i), PIC_PROMPTS[p.k], false, p.a, wrong, rand);
             return { ...q, image: `/pics/${p.img}`, credit: p.c, creditUrl: p.u };
         }
+        case "tf": {
+            const [, q, a, w] = bankRows[src.i];
+            const truth = rand() < 0.5;
+            const claim = truth ? a : w[Math.floor(rand() * w.length)];
+            return { category, id, text: q, isQuote: false, claim, options: ["صح", "خطأ"], answer: truth ? 0 : 1, reveal: `الإجابة: ${a}` };
+        }
+        case "first": {
+            const [[ta, ya], [tb, yb]] = [events[src.a], events[src.b]];
+            const q = finish(category, id, "أيهما حدث أولًا؟", false, ya < yb ? ta : tb, [ya < yb ? tb : ta], rand);
+            return { ...q, reveal: `${ta}: ${yearText(ya)} · ${tb}: ${yearText(yb)}` };
+        }
+        case "more": {
+            const m = metrics[src.m];
+            const [[na, va], [nb, vb]] = [m.items[src.a], m.items[src.b]];
+            const more = rand() < 0.5;
+            const right = more === va > vb ? na : nb;
+            const q = finish(category, id, more ? m.more : m.less, false, right, [right === na ? nb : na], rand);
+            return { ...q, reveal: `${na}: ${num(va)} ${m.unit} · ${nb}: ${num(vb)} ${m.unit}` };
+        }
+        case "year": {
+            const [label, y] = events[src.i];
+            // A 150-year window around the answer, at a random offset so its middle gives nothing away.
+            const span = 150;
+            let min = Math.floor((y - 10 - Math.floor(rand() * (span - 20))) / 10) * 10;
+            const max = Math.min(min + span, 2030);
+            min = max - span;
+            const tolerance = y >= 1900 ? 3 : y >= 1500 ? 10 : 25;
+            return { category, id, text: label, isQuote: false, options: [], answer: -1, year: { answer: y, min, max, tolerance }, reveal: `${label}: ${yearText(y)}` };
+        }
     }
 }
 
-/** Every fixed question, as `[id, category]`. Ids are stable: `b3`, `q12`, `ba7`, `ab7`, `p-flag-dz`. */
+/** The question as one line of plain text, for page titles and share messages. */
+export function questionTitle(q: Question): string {
+    if (q.isQuote) return `من قال: «${q.text}»؟`;
+    if (q.claim) return `${q.text} «${q.claim}» — صح أم خطأ؟`;
+    if (q.year) return `في أي عام: ${q.text}؟`;
+    if (q.options.length === 2) return `${q.text.replace(/؟$/, "")}: ${q.options[0]} أم ${q.options[1]}؟`;
+    return q.text;
+}
+
+/** Every fixed question, as `[id, category]`. Ids are stable: `b3`, `q12`, `ba7`, `ab7`, `p-flag-dz`, `t3`, `f4-9`, `m1-2-7`, `y5`. */
 export function allQuestionIds(): [string, Category][] {
-    const ids: [string, Category][] = [];
-    (bank as [Category, string, string, string[]][]).forEach(([c], i) => ids.push([`b${i}`, c]));
-    quotes.forEach((_, i) => ids.push([`q${i}`, "quote"]));
-    books.forEach((_, i) => {
-        ids.push([`ba${i}`, "lit"]);
-        ids.push([`ab${i}`, "lit"]);
-    });
-    pics.forEach((p, i) => ids.push([picId(i), p.k]));
-    return ids;
+    return [...registry].map(([id, [c]]) => [id, c]);
 }
 
 /** Rebuilds a question from its id with seeded distractors/order — identical on every call, server or client. */
 export function questionById(id: string): Question | null {
-    const pic = picIndex.get(id);
-    if (pic !== undefined) return build(pics[pic].k, { kind: "pic", i: pic }, seeded(id));
-    const m = /^(b|q|ba|ab)(\d+)$/.exec(id);
-    if (!m) return null;
-    const i = Number(m[2]);
-    const kind = ({ b: "bank", q: "quote", ba: "book-author", ab: "author-book" } as const)[m[1] as "b" | "q" | "ba" | "ab"];
-    const size = kind === "bank" ? bank.length : kind === "quote" ? quotes.length : books.length;
-    if (i >= size) return null;
-    const category: Category = kind === "quote" ? "quote" : kind === "bank" ? (bank as [Category, ...unknown[]][])[i][0] : "lit";
-    return build(category, { kind, i }, seeded(id));
+    const entry = registry.get(id);
+    return entry ? build(entry[0], entry[1], seeded(id)) : null;
 }
 
-const SRC_PREFIX = { bank: "b", quote: "q", "book-author": "ba", "author-book": "ab" } as const;
-const srcId = (s: Source) => (s.kind === "pic" ? picId(s.i) : `${SRC_PREFIX[s.kind]}${s.i}`);
+function srcId(s: Source): string {
+    switch (s.kind) {
+        case "pic":
+            return picId(s.i);
+        case "first":
+            return `f${s.a}-${s.b}`;
+        case "more":
+            return `m${s.m}-${s.a}-${s.b}`;
+        default:
+            return `${SRC_PREFIX[s.kind]}${s.i}`;
+    }
+}
 
 /**
  * Endless question stream. Picks a random enabled category, then a random question in it
@@ -238,7 +327,8 @@ export function createDeck(filter: CategoryFilter, rand: () => number = Math.ran
 
 /** Seconds allowed to answer: long questions and quotes get more time. */
 export function timeLimitFor(q: Question): number {
-    return q.isQuote || q.text.length > 80 ? 20 : 15;
+    if (q.year) return 25;
+    return q.isQuote || q.text.length + (q.claim?.length ?? 0) > 80 ? 20 : 15;
 }
 
 /**
@@ -265,6 +355,8 @@ export function penaltyFor(timeFraction = 0, difficulty = 0.5): number {
 
 /** The daily challenge's first day; day numbers (`#1`, `#2`, …) count from here. */
 const DAILY_EPOCH = Date.UTC(2026, 8, 25);
+/** From this day on the daily set also draws from the true-or-false, timeline, comparison and year questions. */
+const DAILY_V2 = "2026-09-26";
 export const DAILY_SIZE = 10;
 
 /** `YYYY-MM-DD` for the player's local calendar day. */
@@ -285,7 +377,8 @@ export function dailyIds(key: string): string[] {
     const perCategory = new Map<Category, number>();
     const books = new Set<string>();
     const ids: string[] = [];
-    for (const [id, c] of shuffle(allQuestionIds(), seeded(`daily:${key}`))) {
+    const all = allQuestionIds();
+    for (const [id, c] of shuffle(key < DAILY_V2 ? all.slice(0, LEGACY_COUNT) : all, seeded(`daily:${key}`))) {
         if ((perCategory.get(c) ?? 0) >= 2) continue;
         const book = /^(?:ba|ab)(\d+)$/.exec(id)?.[1];
         if (book && books.has(book)) continue;
