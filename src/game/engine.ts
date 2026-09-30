@@ -120,8 +120,11 @@ books.forEach((_, i) => {
     add("lit", { kind: "author-book", i });
 });
 pics.forEach((p, i) => add(p.k, { kind: "pic", i }));
+/** Bank rows at or past this index were added after DAILY_V2 went live; dailies before DAILY_V3 leave them out. */
+const BANK_V1 = 701;
+const isBankV2 = (id: string) => { const m = /^[bt](\d+)$/.exec(id); return !!m && +m[1] >= BANK_V1; };
 /** Ids that existed before the number-based types; the daily challenge drew only from these until DAILY_V2. */
-const LEGACY_COUNT = registry.size;
+const LEGACY_COUNT = registry.size - (bankRows.length - BANK_V1);
 // "Which of the following…" makes no sense without the list, so those stay out of true-or-false.
 bankRows.forEach(([, q], i) => /مما يلي|أي من/.test(q) || add("tf", { kind: "tf", i }));
 // At least 5 years apart, so approximate dates can't make the answer arguable.
@@ -379,6 +382,8 @@ export function createDeck(
 const DAILY_EPOCH = Date.UTC(2026, 8, 25);
 /** From this day on the daily set also draws from the true-or-false, timeline, comparison and year questions. */
 const DAILY_V2 = "2026-09-26";
+/** From this day on the daily set also draws from the bank rows added after BANK_V1. */
+const DAILY_V3 = "2026-09-27";
 export const DAILY_SIZE = 10;
 
 /** `YYYY-MM-DD` for the player's local calendar day. */
@@ -399,7 +404,7 @@ export function dailyIds(key: string): string[] {
     const perCategory = new Map<Category, number>();
     const books = new Set<string>();
     const ids: string[] = [];
-    const all = allQuestionIds();
+    const all = key < DAILY_V3 ? allQuestionIds().filter(([id]) => !isBankV2(id)) : allQuestionIds();
     for (const [id, c] of shuffle(key < DAILY_V2 ? all.slice(0, LEGACY_COUNT) : all, seeded(`daily:${key}`))) {
         if ((perCategory.get(c) ?? 0) >= 2) continue;
         const book = /^(?:ba|ab)(\d+)$/.exec(id)?.[1];

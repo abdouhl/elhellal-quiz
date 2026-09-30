@@ -10,7 +10,9 @@
     "build": "astro build && bun scripts/build-og.ts",
     "preview": "astro preview",
     "astro": "astro",
-    "build-questions": "node scripts/build-questions.mjs"
+    "build-questions": "node scripts/build-questions.mjs",
+    "video": "cd video && bun make.ts",
+    "video:studio": "cd video && bun run studio"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^12.6.12",
