@@ -1,0 +1,47 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Quiz from "../components/Quiz.astro";
+import { CATEGORY_ICONS } from "../game/engine";
+import { engines } from "../game/engines";
+import { SITE, qPath, answerText, clip, hubTitle, hubUrl, ogUrl, questionAlternates, questionJsonLd, related, seoDescription, seoTitle } from "../game/seo";
+import { base, t } from "../i18n";
+import type { Lang } from "../i18n";
+
+const { lang, id } = Astro.props as { lang: Lang; id: string };
+const s = t(lang);
+const q = engines[lang].questionById(id)!;
+const title = seoTitle(lang, q);
+const more = related(lang, q);
+---
+
+<Layout
+    lang={lang}
+    pageTitle={s.pageTitle(clip(title, 70))}
+    pageDescription={seoDescription(lang, q)}
+    canonicalUrl={`${SITE}${qPath(lang, id)}`}
+    ogImage={ogUrl(lang, id)}
+    alternates={questionAlternates(id)}
+>
+    <script slot="head" type="application/ld+json" set:html={JSON.stringify(questionJsonLd(lang, q))} />
+    <Quiz lang={lang} initialId={id} />
+
+    <!-- Crawlable answer and links for this question; hidden by the game once it moves on to another one. -->
+    <section id="qa" class="qa" aria-labelledby="qa-title">
+        <details class="qa-answer">
+            <summary id="qa-title">{s.showAnswer}</summary>
+            <p>{s.correctIs("")}<strong>{answerText(lang, q)}</strong></p>
+            {q.reveal && <p class="qa-reveal">{q.reveal}</p>}
+        </details>
+
+        <nav class="qa-more" aria-labelledby="qa-more-title">
+            <h2 id="qa-more-title">{s.similar}</h2>
+            <ul>
+                {more.map((r) => <li><a href={qPath(lang, r.id)}>{clip(seoTitle(lang, r), 90)}</a></li>)}
+            </ul>
+            <p class="qa-links">
+                <a href={hubUrl(lang, q.category)}>{CATEGORY_ICONS[q.category]} {hubTitle(lang, q.category)}</a>
+                <a href={`${base(lang)}/c/`}>{s.allCategories}</a>
+            </p>
+        </nav>
+    </section>
+</Layout>

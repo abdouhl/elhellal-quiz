@@ -152,6 +152,7 @@ button:disabled { cursor: default; }
 .reveal { min-height: 1.5em; max-width: 40em; margin: 0 auto 8px; text-align: center; font-size: 0.95rem; line-height: 1.6; color: var(--ink-muted); }
 .auto { width: min(240px, 60%); height: 2px; margin: 0 auto 12px; background: var(--tile-border); visibility: hidden; }
 .auto > span { display: block; height: 100%; background: var(--accent); transform-origin: right; }
+[dir="ltr"] .auto > span { transform-origin: left; }
 .auto.on { visibility: visible; }
 .auto.on > span { animation: drain var(--ms, 1.5s) linear both; }
 .crowd { min-height: 1.5em; margin: 0 0 8px; text-align: center; font-size: 0.95rem; color: var(--accent); }

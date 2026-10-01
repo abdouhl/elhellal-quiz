@@ -1,40 +1,52 @@
 ---
 import "@new-ui/foundations";
+import { DEFAULT_LANG, LANGS, base, t } from "../i18n";
+import type { Lang } from "../i18n";
+import { SITE } from "../game/seo";
+import type { Alternates } from "../game/seo";
 
 export interface Props {
+    lang: Lang;
     pageTitle: string;
     pageDescription: string;
     canonicalUrl?: string;
     ogImage?: string;
     noindex?: boolean;
+    /** This page in each language that has it; defaults to each language's home page. */
+    alternates?: Alternates;
 }
 
-const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.props;
+const { lang, pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.props;
+const alternates: Alternates = Astro.props.alternates ?? Object.fromEntries(LANGS.map((l) => [l, `${base(l)}/`]));
+const s = t(lang);
+const others = LANGS.filter((l) => l !== lang);
 ---
 
 <!doctype html>
-<html lang="ar" dir="rtl" data-new-ui-theme="dark">
+<html lang={lang} dir={s.dir} data-new-ui-theme="dark">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="theme-color" content="#000000" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="manifest" href={`${base(lang)}/manifest.webmanifest`} />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <meta name="apple-mobile-web-app-title" content="اختبار الهلال" />
+    <meta name="apple-mobile-web-app-title" content={s.siteName} />
     <link rel="preload" href="/woffs/ROM-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/woffs/ROM-Bold.woff2" as="font" type="font/woff2" crossorigin />
     <title>{pageTitle}</title>
     <meta name="description" content={pageDescription} />
     {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
     {noindex && <meta name="robots" content="noindex, follow" />}
+    {!noindex && Object.entries(alternates).map(([l, path]) => <link rel="alternate" hreflang={l} href={`${SITE}${path}`} />)}
+    {!noindex && alternates[DEFAULT_LANG] && <link rel="alternate" hreflang="x-default" href={`${SITE}${alternates[DEFAULT_LANG]}`} />}
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDescription} />
     <meta property="og:type" content="website" />
-    <meta property="og:locale" content="ar_AR" />
+    <meta property="og:locale" content={s.ogLocale} />
     {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
     {ogImage && <meta property="og:image" content={ogImage} />}
     {ogImage && <meta property="og:image:width" content="1200" />}
@@ -50,24 +62,36 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
         crossorigin="anonymous"></script>
 </head>
 <body>
-    <a href="#main-content" class="skip-link">التخطي إلى المحتوى الرئيسي</a>
+    <a href="#main-content" class="skip-link">{s.skip}</a>
 
     <slot />
 
     <footer class="site-footer">
-        <a href="/daily/">تحدي اليوم</a>
-        <a href="/c/">كل الأسئلة</a>
-        <a href="https://elhellal.com">الهلال</a>
+        <a href={`${base(lang)}/daily/`}>{s.footerDaily}</a>
+        <a href={`${base(lang)}/c/`}>{s.footerAll}</a>
+        {others.map((l) => (
+            <a href={alternates[l] ?? `${base(l)}/`} hreflang={l} lang={l} data-lang-choice={l}>{t(l).langName}</a>
+        ))}
+        <a href="https://elhellal.com">{s.footerHome}</a>
     </footer>
+
+    <!-- Offered once to visitors whose location or browser suggests the other language (see the script below). -->
+    {others.map((l) => (
+        <div class="lang-cta" data-lang-cta={l} lang={l} dir={t(l).dir} hidden>
+            <span>{t(l).suggest}</span>
+            <a class="install-cta-btn" href={alternates[l] ?? `${base(l)}/`} data-lang-choice={l}>{t(l).suggestYes}</a>
+            <button type="button" class="install-cta-close" data-lang-stay aria-label={t(l).close}>×</button>
+        </div>
+    ))}
 
     <div class="install-cta" id="install-cta" role="dialog" aria-labelledby="install-cta-title" hidden>
         <img src="/icon-192.png" alt="" width="40" height="40" />
         <div class="install-cta-text">
-            <strong id="install-cta-title">ثبّت اختبار الهلال</strong>
-            <span id="install-cta-desc">العب بسرعة من شاشتك الرئيسية، حتى بدون إنترنت.</span>
+            <strong id="install-cta-title">{s.installTitle}</strong>
+            <span id="install-cta-desc" data-ios={s.installIos}>{s.installDesc}</span>
         </div>
-        <button type="button" class="install-cta-btn" id="install-cta-btn">تثبيت</button>
-        <button type="button" class="install-cta-close" id="install-cta-close" aria-label="إغلاق">×</button>
+        <button type="button" class="install-cta-btn" id="install-cta-btn">{s.install}</button>
+        <button type="button" class="install-cta-close" id="install-cta-close" aria-label={s.close}>×</button>
     </div>
 
     <script is:inline>
@@ -113,7 +137,7 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
             const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && navigator.platform === "MacIntel";
             if (ios) {
                 // iOS has no install prompt API: show manual instructions instead.
-                desc.textContent = "اضغط على زر المشاركة ⎋ ثم «إضافة إلى الشاشة الرئيسية».";
+                desc.textContent = desc.dataset.ios;
                 btn.hidden = true;
                 whenEngaged(() => setTimeout(() => (cta.hidden = false), 3000));
                 return;
@@ -133,6 +157,40 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
                 hide(outcome !== "accepted");
             });
             addEventListener("appinstalled", () => hide(false));
+        })();
+
+        // Language: never switch on our own; offer the other language once to visitors whose country
+        // (from Cloudflare) and browser both point to it, and remember what they pick.
+        (() => {
+            const KEY = "lang.choice";
+            const lang = document.documentElement.lang;
+            const remember = (l) => {
+                try { localStorage.setItem(KEY, l); } catch {}
+            };
+            document.querySelectorAll("[data-lang-choice]").forEach((a) => a.addEventListener("click", () => remember(a.dataset.langChoice)));
+            try {
+                if (localStorage.getItem(KEY)) return;
+            } catch {
+                return;
+            }
+            const ARAB = "dz ma tn ly eg sd mr so dj km sa ae qa bh kw om ye iq sy jo lb ps".split(" ");
+            const arabicBrowser = (navigator.languages || [navigator.language]).some((l) => /^ar\b/i.test(l));
+            fetch("/api/geo")
+                .then((r) => (r.ok ? r.json() : {}))
+                .then(({ country }) => {
+                    const arab = ARAB.includes(String(country || "").toLowerCase());
+                    // Unknown country: go by the browser alone.
+                    const want = arab || arabicBrowser || (!country && lang === "ar") ? "ar" : "en";
+                    if (want === lang) return;
+                    const cta = document.querySelector(`[data-lang-cta="${want}"]`);
+                    if (!cta) return;
+                    cta.hidden = false;
+                    cta.querySelector("[data-lang-stay]").addEventListener("click", () => {
+                        cta.hidden = true;
+                        remember(lang);
+                    });
+                })
+                .catch(() => {});
         })();
     </script>
 </body>
@@ -230,8 +288,30 @@ const { pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Astro.pro
         box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
         animation: install-cta-in 0.3s ease-out;
     }
-    .install-cta[hidden] {
+    .install-cta[hidden], .lang-cta[hidden] {
         display: none;
+    }
+    .lang-cta {
+        position: fixed;
+        inset-inline: 12px;
+        top: calc(12px + env(safe-area-inset-top));
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--grey8);
+        border-radius: 14px;
+        background: var(--grey10);
+        color: var(--content-primary);
+        font-size: 0.9rem;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+    }
+    .lang-cta span {
+        flex: 1;
+    }
+    .lang-cta a {
+        text-decoration: none;
     }
     .install-cta img {
         flex: none;

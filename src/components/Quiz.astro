@@ -1,38 +1,43 @@
 ---
-import { CATEGORY_ICONS, CATEGORY_LABELS, questionById } from "../game/engine";
+import { CATEGORY_ICONS } from "../game/engine";
+import { engines } from "../game/engines";
+import { base, t } from "../i18n";
+import type { Lang } from "../i18n";
 import "../styles/quiz.css";
 
 export interface Props {
+    lang: Lang;
     /** Start on this fixed question (used by /q/[id]); otherwise start on a random one. */
     initialId?: string;
 }
 
-const { initialId } = Astro.props;
-const initial = initialId ? questionById(initialId) : null;
+const { lang, initialId } = Astro.props;
+const s = t(lang);
+const initial = initialId ? engines[lang].questionById(initialId) : null;
 ---
 
 <main id="main-content" class="app">
     <div class="topbar" aria-live="polite">
-        <span id="streak" class="chip chip-n" title="إجابات صحيحة متتالية">🔥 …</span>
-        <span id="best" class="chip" title="أفضل سلسلة">★ …</span>
+        <span id="streak" class="chip chip-n" title={s.streakTitle}>🔥 …</span>
+        <span id="best" class="chip" title={s.bestTitle}>★ …</span>
         <span class="topbar-end">
-            <button type="button" id="report" class="chip chip-btn chip-icon" title="الإبلاغ عن خطأ في هذا السؤال" aria-label="الإبلاغ عن خطأ في هذا السؤال">⚑</button>
+            <button type="button" id="report" class="chip chip-btn chip-icon" title={s.report} aria-label={s.report}>⚑</button>
         </span>
     </div>
 
     <section id="card" class="card">
-        <p id="q-cat" class="q-cat">{initial && `${CATEGORY_ICONS[initial.category]} ${CATEGORY_LABELS[initial.category]}`}</p>
+        <p id="q-cat" class="q-cat">{initial && `${CATEGORY_ICONS[initial.category]} ${s.labels[initial.category]}`}</p>
         <figure id="q-fig" class="q-fig" data-kind={initial?.category} hidden={!initial?.image}>
-            <img src={initial?.image} alt="صورة السؤال" decoding="async" />
+            <img src={initial?.image} alt={s.picAlt} decoding="async" />
             <figcaption><a href={initial?.creditUrl || "#"} target="_blank" rel="noopener" hidden={!initial?.credit}>{initial?.credit && `📷 ${initial.credit}`}</a></figcaption>
         </figure>
         <h1 id="q-text" class:list={["q-text", { "is-quote": initial?.isQuote, "has-pic": initial?.image }]} data-id={initial ? initialId : undefined}>
-            {initial ? initial.text : "جارٍ التحميل…"}
+            {initial ? initial.text : s.loading}
         </h1>
-        <p id="q-claim" class="q-claim" hidden={!initial?.claim}>{initial?.claim && `«${initial.claim}»`}</p>
+        <p id="q-claim" class="q-claim" hidden={!initial?.claim}>{initial?.claim && s.quoted(initial.claim)}</p>
     </section>
 
-    <div id="opts" class="opts" role="group" aria-label="الخيارات">
+    <div id="opts" class="opts" role="group" aria-label={s.options}>
         {
             initial?.options.map((text, i) => (
                 <button type="button" class="opt" data-i={i}>
@@ -44,20 +49,22 @@ const initial = initialId ? questionById(initialId) : null;
 
     <div class="foot">
         <p id="feedback" class="feedback" role="status"></p>
-        <button type="button" id="brag" class="brag" hidden>شارك رقمك القياسي 🔥</button>
-        <a id="next" class="next" href="/" hidden>التالي ←</a>
+        <button type="button" id="brag" class="brag" hidden>{s.brag}</button>
+        <a id="next" class="next" href={`${base(lang)}/`} hidden>{s.next}</a>
     </div>
     <p id="reveal" class="reveal"></p>
     <div id="auto" class="auto" aria-hidden="true"><span></span></div>
 
-    <p class="hint">اضغط ١ – ٤ للإجابة، وأي مكان للمتابعة.</p>
-    <noscript><p class="noscript">هذه اللعبة تحتاج إلى تفعيل جافاسكربت.</p></noscript>
+    <p class="hint">{s.hint}</p>
+    <noscript><p class="noscript">{s.noscript}</p></noscript>
 </main>
 
 <script>
-    import { CATEGORY_ICONS, CATEGORY_LABELS, createDeck, questionById } from "../game/engine";
+    import { CATEGORY_ICONS } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { SITE, ar, countAnswer, fetchRates, recordAnswer, renderAnswers, reportQuestion, settleYear, shareWithFeedback, showClaim, showPicture, store, toast } from "../game/client";
+    import { SITE, countAnswer, fetchRates, home, loadEngine, num, recordAnswer, renderAnswers, reportQuestion, s, settleYear, shareWithFeedback, showClaim, showPicture, store, toast } from "../game/client";
+
+    const { createDeck, questionById } = await loadEngine();
 
     // At most one vignette opportunity per minute: once this much time has passed, the next question
     // is opened as a real page load via a link click, which is what lets AdSense show a vignette ad.
@@ -117,8 +124,8 @@ const initial = initialId ? questionById(initialId) : null;
     let lostStreak = 0;
 
     function renderStats(bump = false) {
-        el.streak.textContent = `🔥 ${ar(streak)}`;
-        el.best.textContent = `★ ${ar(best)}`;
+        el.streak.textContent = `🔥 ${num(streak)}`;
+        el.best.textContent = `★ ${num(best)}`;
         if (bump) replay(el.streak, "bump");
     }
 
@@ -136,7 +143,7 @@ const initial = initialId ? questionById(initialId) : null;
         question = q;
         if (qa && q.id !== el.qText.dataset.id) qa.hidden = true;
         locked = false;
-        el.qCat.textContent = `${CATEGORY_ICONS[q.category]} ${CATEGORY_LABELS[q.category]}`;
+        el.qCat.textContent = `${CATEGORY_ICONS[q.category]} ${s.labels[q.category]}`;
         el.qText.textContent = q.text;
         el.qText.classList.toggle("is-quote", q.isQuote);
         showClaim(q);
@@ -147,7 +154,7 @@ const initial = initialId ? questionById(initialId) : null;
         el.reveal.textContent = "";
         el.auto.classList.remove("on");
         el.next.hidden = true;
-        el.next.href = "/";
+        el.next.href = home;
         el.brag.hidden = true;
         el.report.disabled = false;
         pageTurn = false;
@@ -179,7 +186,7 @@ const initial = initialId ? questionById(initialId) : null;
     function showNext() {
         if (adDue()) {
             pageTurn = true;
-            el.next.href = `/q/${upcoming!.id}/`;
+            el.next.href = `${home}q/${upcoming!.id}/`;
         }
         el.next.hidden = false;
         el.next.focus();
@@ -206,7 +213,7 @@ const initial = initialId ? questionById(initialId) : null;
         const { answer, tolerance } = question.year;
         const ok = Math.abs(guess - answer) <= tolerance;
         settleYear(el.opts, ok);
-        settle(ok, guess === answer ? "بالضبط! 🎯" : `إجابتك ${ar(guess)}م`);
+        settle(ok, guess === answer ? s.exact : s.yourYear(guess));
     }
 
     /** Scores the answer to the question on screen; `note` adds to the feedback (the year guessed). */
@@ -235,9 +242,9 @@ const initial = initialId ? questionById(initialId) : null;
         store.set("quiz.streak", String(streak));
         renderStats(ok);
 
-        el.feedback.textContent = [ok ? "صحيح ✓" : "خطأ ✗", note].filter(Boolean).join(" · ");
+        el.feedback.textContent = [ok ? s.right : s.wrong, note].filter(Boolean).join(" · ");
         el.feedback.className = ok ? "feedback ok" : "feedback bad";
-        const reveal = q.reveal || (ok || q.year ? "" : `الإجابة الصحيحة: ${q.options[q.answer]}`);
+        const reveal = q.reveal || (ok || q.year ? "" : s.correctIs(q.options[q.answer]));
         el.reveal.textContent = reveal;
         prepareNext();
 
@@ -259,13 +266,13 @@ const initial = initialId ? questionById(initialId) : null;
         nextQuestion();
     });
     el.brag.addEventListener("click", () =>
-        shareWithFeedback(`رقمي القياسي ${ar(lostStreak)} إجابات صحيحة متتالية 🔥 في اختبار الهلال. هل تتفوق عليّ؟`, `${SITE}/`),
+        shareWithFeedback(s.bragText(lostStreak), `${SITE}${home}`),
     );
     el.report.addEventListener("click", async () => {
         if (!question) return;
         el.report.disabled = true;
         const sent = await reportQuestion(question.id);
-        toast(sent ? "شكرًا! سنراجع هذا السؤال" : "تعذّر الإرسال، حاول لاحقًا");
+        toast(sent ? s.reportOk : s.reportFail);
         if (!sent) el.report.disabled = false;
     });
     el.opts.addEventListener("click", (e) => {

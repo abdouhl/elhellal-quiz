@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { questionById } from "../../game/engine";
+import { isStatId } from "../../game/stats";
 
 export const prerender = false;
 
@@ -19,7 +19,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
         const rates = Object.fromEntries(results.map((r) => [r.id, Math.round((100 * r.ok) / r.n)]));
         return Response.json(rates, { headers: { "cache-control": "public, max-age=3600" } });
     }
-    if (!questionById(id)) return new Response(null, { status: 400 });
+    if (!isStatId(id)) return new Response(null, { status: 400 });
     const row = await db.prepare("SELECT n, ok FROM answers WHERE id = ?1").bind(id).first<{ n: number; ok: number }>();
     return Response.json(row ?? { n: 0, ok: 0 }, { headers: { "cache-control": "public, max-age=60" } });
 };
@@ -33,7 +33,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
         return new Response(null, { status: 400 });
     }
     const { id, ok } = body;
-    if (typeof id !== "string" || typeof ok !== "boolean" || !questionById(id)) return new Response(null, { status: 400 });
+    if (typeof id !== "string" || typeof ok !== "boolean" || !isStatId(id)) return new Response(null, { status: 400 });
 
     const db = locals.runtime?.env?.DB;
     if (!db) return new Response(null, { status: 503 });

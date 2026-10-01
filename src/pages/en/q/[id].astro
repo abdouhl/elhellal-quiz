@@ -1,0 +1,10 @@
+---
+import QuestionPage from "../../../views/QuestionPage.astro";
+import { engines } from "../../../game/engines";
+
+export function getStaticPaths() {
+    return engines.en.allQuestionIds().map(([id]) => ({ params: { id } }));
+}
+---
+
+<QuestionPage lang="en" id={Astro.params.id!} />

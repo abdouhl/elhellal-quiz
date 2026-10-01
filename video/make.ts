@@ -3,7 +3,7 @@
  *
  * Single question (TikTok / Shorts / Reels + X):
  *   bun run video                       # a random question not used before → vertical + square (X) versions
- *   bun run video --cat flag            # from one category (geo, sci, hist, gen, lang, lit, quote, flag, face, place, tf, first, more)
+ *   bun run video --cat flag            # from one category (geo, sci, hist, gen, lang, lit, flag, face, place, tf, first, more)
  *   bun run video --id b5               # a specific question id (as in /q/<id>/ on the site)
  *   bun run video --count 3             # several in one go
  *   bun run video --formats vertical    # pick formats: vertical, square, landscape (comma-separated)
@@ -24,7 +24,10 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { cpus, homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { CATEGORY_ICONS, CATEGORY_LABELS, allQuestionIds, questionById, questionTitle, type Category, type Question } from "../src/game/engine";
+import { CATEGORY_ICONS, type Category, type Question } from "../src/game/engine";
+import { engine } from "../src/game/ar";
+
+const { CATEGORY_LABELS, allQuestionIds, questionById, questionTitle } = engine;
 import { SR, music, sfx, wav, type Stereo, type Timeline } from "./audio";
 import type { Format, QuizProps } from "./src/Quiz";
 import type { MarathonProps } from "./src/Marathon";

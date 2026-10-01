@@ -1,13 +1,22 @@
 ---
+import { base, t } from "../i18n";
+import type { Lang } from "../i18n";
 import "../styles/quiz.css";
+
+export interface Props {
+    lang: Lang;
+}
+
+const { lang } = Astro.props;
+const s = t(lang);
 ---
 
 <main id="main-content" class="app">
     <div class="topbar" aria-live="polite">
-        <span id="d-num" class="chip">تحدي اليوم</span>
-        <span id="d-prog" class="chip chip-n">٠/١٠</span>
+        <span id="d-num" class="chip">{s.dailyChip}</span>
+        <span id="d-prog" class="chip chip-n">{s.n(0)}/{s.n(10)}</span>
         <span class="topbar-end">
-            <a class="chip chip-btn" href="/">∞ الوضع اللانهائي</a>
+            <a class="chip chip-btn" href={`${base(lang)}/`}>{s.endless}</a>
         </span>
     </div>
 
@@ -15,19 +24,19 @@ import "../styles/quiz.css";
         <section id="card" class="card">
             <p id="q-cat" class="q-cat"></p>
             <figure id="q-fig" class="q-fig" hidden>
-                <img alt="صورة السؤال" decoding="async" />
+                <img alt={s.picAlt} decoding="async" />
                 <figcaption><a href="#" target="_blank" rel="noopener" hidden></a></figcaption>
             </figure>
-            <h1 id="q-text" class="q-text">جارٍ التحميل…</h1>
+            <h1 id="q-text" class="q-text">{s.loading}</h1>
             <p id="q-claim" class="q-claim" hidden></p>
         </section>
-        <div id="opts" class="opts" role="group" aria-label="الخيارات"></div>
+        <div id="opts" class="opts" role="group" aria-label={s.options}></div>
         <div class="foot">
             <p id="feedback" class="feedback" role="status"></p>
-            <button type="button" id="next" class="next" hidden>التالي ←</button>
+            <button type="button" id="next" class="next" hidden>{s.next}</button>
         </div>
         <p id="crowd" class="crowd"></p>
-        <p class="hint">١٠ أسئلة، نفس الأسئلة لكل اللاعبين اليوم. أنهِها وتحدَّ أصدقاءك بنتيجتك.</p>
+        <p class="hint">{s.dailyHint}</p>
     </div>
 
     <section id="result" class="card result" hidden aria-live="polite">
@@ -36,17 +45,21 @@ import "../styles/quiz.css";
         <p id="r-grid" class="result-grid"></p>
         <p id="r-verdict" class="result-verdict"></p>
         <p id="r-streak" class="result-streak"></p>
-        <button type="button" id="r-share" class="next">شارك نتيجتك ↗</button>
-        <p class="result-next">التحدي التالي بعد <span id="r-countdown"></span></p>
-        <a class="brag" href="/">تابع اللعب بلا توقف ←</a>
+        <button type="button" id="r-share" class="next">{s.shareScore}</button>
+        <p class="result-next">{s.nextIn} <span id="r-countdown"></span></p>
+        <a class="brag" href={`${base(lang)}/`}>{s.keepPlaying}</a>
     </section>
-    <noscript><p class="noscript">هذه اللعبة تحتاج إلى تفعيل جافاسكربت.</p></noscript>
+    <noscript><p class="noscript">{s.noscript}</p></noscript>
 </main>
 
 <script>
-    import { CATEGORY_ICONS, CATEGORY_LABELS, DAILY_SIZE, dailyIds, dayKey, dayNumber, questionById } from "../game/engine";
+    import { CATEGORY_ICONS, DAILY_SIZE, dayKey, dayNumber } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { SITE, ar, countAnswer, crowdLine, recordAnswer, renderAnswers, settleYear, shareWithFeedback, showClaim, showPicture, store } from "../game/client";
+    import { SITE, countAnswer, crowdLine, home, lang, loadEngine, num, recordAnswer, renderAnswers, s, settleYear, shareWithFeedback, showClaim, showPicture, store } from "../game/client";
+
+    const { dailyIds, questionById } = await loadEngine();
+    /** Each language has its own daily set, so its progress is saved separately (Arabic keeps the original key). */
+    const KEY = lang === "ar" ? "daily" : `daily.${lang}`;
 
     interface DailyState {
         day: string;
@@ -78,25 +91,25 @@ import "../styles/quiz.css";
     };
 
     const today = dayKey();
-    const title = `تحدي الهلال #${ar(dayNumber(today))}`;
+    const title = s.dailyTitle(dayNumber(today));
 
     function loadState(): DailyState {
         try {
-            const s = JSON.parse(store.get("daily.state") ?? "") as DailyState;
+            const s = JSON.parse(store.get(`${KEY}.state`) ?? "") as DailyState;
             if (s.day === today && Array.isArray(s.ids) && Array.isArray(s.hits)) return s;
         } catch {}
         return { day: today, ids: dailyIds(today), hits: [] };
     }
 
     const state = loadState();
-    const save = () => store.set("daily.state", JSON.stringify(state));
+    const save = () => store.set(`${KEY}.state`, JSON.stringify(state));
     let question: Question | null = null;
     let locked = false;
     let advanceTimer: number | undefined;
 
     function renderProgress() {
         el.num.textContent = title;
-        el.prog.textContent = `${ar(Math.min(state.hits.length + (locked ? 0 : 1), DAILY_SIZE))}/${ar(DAILY_SIZE)}`;
+        el.prog.textContent = `${num(Math.min(state.hits.length + (locked ? 0 : 1), DAILY_SIZE))}/${num(DAILY_SIZE)}`;
     }
 
     function renderQuestion() {
@@ -109,7 +122,7 @@ import "../styles/quiz.css";
         }
         question = q;
         locked = false;
-        el.qCat.textContent = `${CATEGORY_ICONS[q.category]} ${CATEGORY_LABELS[q.category]}`;
+        el.qCat.textContent = `${CATEGORY_ICONS[q.category]} ${s.labels[q.category]}`;
         el.qText.textContent = q.text;
         el.qText.classList.toggle("is-quote", q.isQuote);
         showPicture(q);
@@ -145,7 +158,7 @@ import "../styles/quiz.css";
         const { answer, tolerance } = question.year;
         const ok = Math.abs(guess - answer) <= tolerance;
         settleYear(el.opts, ok);
-        settle(ok, guess === answer ? "بالضبط! 🎯" : `إجابتك ${ar(guess)}م`);
+        settle(ok, guess === answer ? s.exact : s.yourYear(guess));
     }
 
     /** Records the answer to the question on screen; `note` adds to the feedback (the year guessed). */
@@ -162,10 +175,10 @@ import "../styles/quiz.css";
             if (question === q) el.crowd.textContent = crowdLine(c);
         });
 
-        el.feedback.textContent = ok ? ["إجابة صحيحة!", reveal].filter(Boolean).join(" — ") : reveal || `الإجابة الصحيحة: ${q.options[q.answer]}`;
+        el.feedback.textContent = ok ? [s.dailyRight, reveal].filter(Boolean).join(" — ") : reveal || s.correctIs(q.options[q.answer]);
         el.feedback.className = ok ? "feedback ok" : "feedback bad";
         const last = state.hits.length === state.ids.length;
-        el.next.textContent = last ? "النتيجة ←" : "التالي ←";
+        el.next.textContent = last ? s.results : s.next;
         renderProgress();
         if (ok && !last) advanceTimer = window.setTimeout(advance, reveal ? 3000 : 1300);
         else {
@@ -178,36 +191,37 @@ import "../styles/quiz.css";
     function finishDay() {
         const d = new Date();
         d.setDate(d.getDate() - 1);
-        const streak = store.get("daily.last") === dayKey(d) ? (Number(store.get("daily.streak")) || 0) + 1 : 1;
-        store.set("daily.streak", String(streak));
-        store.set("daily.last", today);
+        const streak = store.get(`${KEY}.last`) === dayKey(d) ? (Number(store.get(`${KEY}.streak`)) || 0) + 1 : 1;
+        store.set(`${KEY}.streak`, String(streak));
+        store.set(`${KEY}.last`, today);
     }
 
     function verdict(score: number): string {
-        if (score === DAILY_SIZE) return "علامة كاملة! 🏆";
-        if (score >= 8) return "ممتاز! 🧠";
-        if (score >= 6) return "جيد جدًا 👏";
-        if (score >= 4) return "ليس سيئًا 🙂";
-        return "حظًا أوفر غدًا 🌙";
+        const [low, fair, good, great, full] = s.verdicts;
+        if (score === DAILY_SIZE) return full;
+        if (score >= 8) return great;
+        if (score >= 6) return good;
+        if (score >= 4) return fair;
+        return low;
     }
 
     function showResult() {
         const score = state.hits.filter(Boolean).length;
         const grid = state.hits.map((h) => (h ? "🟧" : "⬛")).join("");
-        const streak = store.get("daily.last") === today ? Number(store.get("daily.streak")) || 1 : 0;
-        const streakLine = streak >= 2 ? `🔥 ${ar(streak)} أيام متتالية` : "";
+        const streak = store.get(`${KEY}.last`) === today ? Number(store.get(`${KEY}.streak`)) || 1 : 0;
+        const streakLine = streak >= 2 ? s.daysInRow(streak) : "";
 
         el.play.hidden = true;
         el.result.hidden = false;
         el.num.textContent = title;
-        el.prog.textContent = `${ar(score)}/${ar(DAILY_SIZE)}`;
+        el.prog.textContent = `${num(score)}/${num(DAILY_SIZE)}`;
         el.rTitle.textContent = title;
-        el.rScore.textContent = `${ar(score)}/${ar(DAILY_SIZE)}`;
+        el.rScore.textContent = `${num(score)}/${num(DAILY_SIZE)}`;
         el.rGrid.textContent = grid;
         el.rVerdict.textContent = verdict(score);
         el.rStreak.textContent = streakLine;
         el.rShare.onclick = () =>
-            shareWithFeedback([`${title} — ${ar(score)}/${ar(DAILY_SIZE)}`, grid, streakLine].filter(Boolean).join("\n"), `${SITE}/daily/`);
+            shareWithFeedback([`${title} — ${num(score)}/${num(DAILY_SIZE)}`, grid, streakLine].filter(Boolean).join("\n"), `${SITE}${home}daily/`);
         el.rShare.focus();
         tick();
         setInterval(tick, 1000);
@@ -218,7 +232,7 @@ import "../styles/quiz.css";
         const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
         const s = Math.max(0, Math.floor((midnight.getTime() - now.getTime()) / 1000));
         if (s === 0 || dayKey(now) !== today) location.reload();
-        const pad = (n: number) => ar(n).padStart(2, "٠");
+        const pad = (n: number) => num(n).padStart(2, num(0));
         el.rCountdown.textContent = `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
     }
 

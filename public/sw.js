@@ -1,9 +1,9 @@
 // Offline support: pages are network-first (fresh content, cached fallback),
 // hashed build assets and fonts are cache-first. Cross-origin (ads) is untouched.
-const VERSION = "v2";
+const VERSION = "v3";
 const PAGES = `pages-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
-const PRECACHE = ["/", "/manifest.webmanifest", "/favicon.svg", "/icon-192.png"];
+const PRECACHE = ["/", "/en/", "/manifest.webmanifest", "/en/manifest.webmanifest", "/favicon.svg", "/icon-192.png"];
 
 self.addEventListener("install", (event) => {
     event.waitUntil(caches.open(PAGES).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
@@ -33,7 +33,7 @@ self.addEventListener("fetch", (event) => {
                     }
                     return res;
                 })
-                .catch(async () => (await caches.match(req)) || (await caches.match("/"))),
+                .catch(async () => (await caches.match(req)) || (await caches.match(url.pathname.startsWith("/en/") ? "/en/" : "/"))),
         );
         return;
     }

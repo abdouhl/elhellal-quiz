@@ -1,0 +1,14 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Quiz from "../components/Quiz.astro";
+import { SITE, homeUrl, ogUrl } from "../game/seo";
+import { t } from "../i18n";
+import type { Lang } from "../i18n";
+
+const { lang } = Astro.props as { lang: Lang };
+const s = t(lang);
+---
+
+<Layout lang={lang} pageTitle={s.homeTitle} pageDescription={s.homeDesc} canonicalUrl={`${SITE}${homeUrl(lang)}`} ogImage={ogUrl(lang, "home")}>
+    <Quiz lang={lang} />
+</Layout>

@@ -1,0 +1,37 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { CATEGORY_ICONS } from "../game/engine";
+import { SITE, categories, categoryIds, homeUrl, hubUrl, ogUrl, pageAlternates } from "../game/seo";
+import { base, t } from "../i18n";
+import type { Lang } from "../i18n";
+import "../styles/quiz.css";
+
+const { lang } = Astro.props as { lang: Lang };
+const s = t(lang);
+const cats = categories(lang);
+const total = cats.reduce((n, c) => n + categoryIds(lang, c).length, 0);
+---
+
+<Layout
+    lang={lang}
+    pageTitle={s.allTitle}
+    pageDescription={s.allDesc(total)}
+    canonicalUrl={`${SITE}${base(lang)}/c/`}
+    ogImage={ogUrl(lang, "home")}
+    alternates={pageAlternates((l) => `${base(l)}/c/`)}
+>
+    <main id="main-content" class="hub">
+        <h1>{s.allH1}</h1>
+        <p class="hub-intro">{s.allIntro(total, cats.length)}</p>
+        <a class="hub-play" href={homeUrl(lang)}>{s.startQuiz}</a>
+        <ul class="hub-cats">
+            {cats.map((c) => (
+                <li>
+                    <a href={hubUrl(lang, c)}>
+                        {CATEGORY_ICONS[c]} {s.labels[c]} <span class="hub-count">· {s.countSuffix(categoryIds(lang, c).length)}</span>
+                    </a>
+                </li>
+            ))}
+        </ul>
+    </main>
+</Layout>

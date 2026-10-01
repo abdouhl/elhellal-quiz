@@ -1,7 +1,24 @@
 // Browser-only helpers shared by the endless quiz and the daily challenge.
+import { DEFAULT_LANG, base, t } from "../i18n";
+import type { Lang } from "../i18n";
 import type { Question } from "./engine";
 
 export const SITE = "https://quiz.elhellal.com";
+
+/** The page's language, from `<html lang>`, and its strings. */
+export const lang = (document.documentElement.lang || DEFAULT_LANG) as Lang;
+export const s = t(lang);
+/** Path of this language's home page ("/" or "/en/"). */
+export const home = `${base(lang)}/`;
+
+/** Loads this language's engine; only that language's questions are downloaded. */
+export const loadEngine = () => (lang === "en" ? import("./en") : import("./ar")).then((m) => m.engine);
+
+/**
+ * The id answers are counted under: languages other than Arabic get their own counts, since the
+ * same question can be harder or easier for a different audience.
+ */
+const statId = (id: string) => (lang === DEFAULT_LANG ? id : `${lang}:${id}`);
 
 // localStorage can throw (private windows, blocked storage) — the quiz must work without it.
 export const store = {
@@ -42,7 +59,7 @@ export function showPicture(q: Question, onShown: () => void = () => {}) {
 /** Shows a true-or-false question's claim under the question (or hides the line). */
 export function showClaim(q: Question) {
     const claim = document.getElementById("q-claim")!;
-    claim.textContent = q.claim ? `«${q.claim}»` : "";
+    claim.textContent = q.claim ? s.quoted(q.claim) : "";
     claim.hidden = !q.claim;
 }
 
@@ -71,22 +88,22 @@ function yearPicker({ min, max, tolerance }: NonNullable<Question["year"]>, onYe
     box.innerHTML = `
         <output class="yp-val"></output>
         <div class="yp-row" dir="ltr">
-            <button type="button" class="yp-step" data-d="-10">−١٠</button>
-            <button type="button" class="yp-step" data-d="-1">−١</button>
-            <input type="range" class="yp-range" aria-label="السنة" />
-            <button type="button" class="yp-step" data-d="1">+١</button>
-            <button type="button" class="yp-step" data-d="10">+١٠</button>
+            <button type="button" class="yp-step" data-d="-10">−${s.n(10)}</button>
+            <button type="button" class="yp-step" data-d="-1">−${s.n(1)}</button>
+            <input type="range" class="yp-range" aria-label="${s.yearLabel}" />
+            <button type="button" class="yp-step" data-d="1">+${s.n(1)}</button>
+            <button type="button" class="yp-step" data-d="10">+${s.n(10)}</button>
         </div>
-        <button type="button" class="next yp-go">تأكيد</button>
+        <button type="button" class="next yp-go">${s.confirm}</button>
         <p class="yp-note"></p>`;
     const val = box.querySelector("output")!;
     const range = box.querySelector("input")!;
     const go = box.querySelector<HTMLButtonElement>(".yp-go")!;
-    box.querySelector(".yp-note")!.textContent = `يُقبل فرق حتى ${ar(tolerance)} سنوات`;
+    box.querySelector(".yp-note")!.textContent = s.tolerance(tolerance);
     range.min = String(min);
     range.max = String(max);
     range.value = String(Math.round((min + max) / 20) * 10);
-    const show = () => (val.textContent = `${ar(Number(range.value))}م`);
+    const show = () => (val.textContent = s.year(Number(range.value)));
     show();
     const submit = () => {
         if (go.disabled) return;
@@ -122,7 +139,8 @@ export function countAnswer() {
     dispatchEvent(new Event("quiz:answered"));
 }
 
-export const ar = (n: number) => String(n).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
+/** Digits as this language writes them. */
+export const num = s.n;
 
 /** Crowd numbers are hidden until a question has enough answers to mean something. */
 const MIN_ANSWERS = 10;
@@ -138,7 +156,7 @@ export async function recordAnswer(id: string, ok: boolean): Promise<Crowd | nul
         const res = await fetch("/api/answer", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id, ok }),
+            body: JSON.stringify({ id: statId(id), ok }),
         });
         return res.ok ? await res.json() : null;
     } catch {
@@ -150,7 +168,14 @@ export async function recordAnswer(id: string, ok: boolean): Promise<Crowd | nul
 export async function fetchRates(): Promise<Map<string, number>> {
     try {
         const res = await fetch("/api/answer");
-        return res.ok ? new Map(Object.entries((await res.json()) as Record<string, number>)) : new Map();
+        if (!res.ok) return new Map();
+        // Keep this language's counts, keyed by plain question id.
+        const own = Object.entries((await res.json()) as Record<string, number>).flatMap(([id, pct]) => {
+            const sep = id.indexOf(":");
+            const idLang = sep < 0 ? DEFAULT_LANG : id.slice(0, sep);
+            return idLang === lang ? [[id.slice(sep + 1), pct] as const] : [];
+        });
+        return new Map(own);
     } catch {
         return new Map();
     }
@@ -162,7 +187,7 @@ export async function reportQuestion(id: string): Promise<boolean> {
         const res = await fetch("/api/report", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id }),
+            body: JSON.stringify({ id: statId(id) }),
         });
         return res.ok;
     } catch {
@@ -177,7 +202,7 @@ export function crowdPercent(c: Crowd | null): number | null {
 
 export function crowdLine(c: Crowd | null): string {
     const pct = crowdPercent(c);
-    return pct === null ? "" : `${ar(pct)}٪ من اللاعبين أجابوا بشكل صحيح`;
+    return pct === null ? "" : s.crowd(pct);
 }
 
 /** Opens the native share sheet (WhatsApp etc. on phones), else copies the text. Resolves to what happened. */
@@ -209,5 +234,5 @@ export function toast(message: string) {
 }
 
 export async function shareWithFeedback(text: string, url: string) {
-    if ((await share(text, url)) === "copied") toast("تم نسخ الرابط — الصقه لأصدقائك");
+    if ((await share(text, url)) === "copied") toast(s.copied);
 }

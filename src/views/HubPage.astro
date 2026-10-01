@@ -1,0 +1,60 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { CATEGORY_ICONS } from "../game/engine";
+import type { Category } from "../game/engine";
+import { engines } from "../game/engines";
+import { SITE, qPath, categoryIds, clip, homeUrl, hubAlternates, hubTitle, hubUrl, ogUrl, seoTitle } from "../game/seo";
+import { base, t } from "../i18n";
+import type { Lang } from "../i18n";
+import "../styles/quiz.css";
+
+const { lang, category } = Astro.props as { lang: Lang; category: Category };
+const s = t(lang);
+const questions = categoryIds(lang, category).map((id) => engines[lang].questionById(id)!);
+const label = s.labels[category];
+const title = hubTitle(lang, category);
+const url = `${SITE}${hubUrl(lang, category)}`;
+const jsonLd = [
+    {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: title,
+        url,
+        inLanguage: lang,
+        mainEntity: {
+            "@type": "ItemList",
+            numberOfItems: questions.length,
+            itemListElement: questions.map((q, i) => ({ "@type": "ListItem", position: i + 1, url: `${SITE}${qPath(lang, q.id)}` })),
+        },
+    },
+    {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+            { "@type": "ListItem", position: 1, name: s.siteName, item: `${SITE}${homeUrl(lang)}` },
+            { "@type": "ListItem", position: 2, name: s.footerAll, item: `${SITE}${base(lang)}/c/` },
+            { "@type": "ListItem", position: 3, name: title, item: url },
+        ],
+    },
+];
+---
+
+<Layout
+    lang={lang}
+    pageTitle={s.hubPageTitle(title, questions.length)}
+    pageDescription={s.hubDesc(questions.length, label, clip(seoTitle(lang, questions[0]), 80))}
+    canonicalUrl={url}
+    ogImage={ogUrl(lang, "home")}
+    alternates={hubAlternates(category)}
+>
+    <script slot="head" type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <main id="main-content" class="hub">
+        <h1>{CATEGORY_ICONS[category]} {title}</h1>
+        <p class="hub-intro">{s.hubIntro(questions.length, label)}</p>
+        <a class="hub-play" href={homeUrl(lang)}>{s.playQuiz}</a>
+        <ul>
+            {questions.map((q) => <li><a href={qPath(lang, q.id)}>{clip(seoTitle(lang, q), 110)}</a></li>)}
+        </ul>
+        <p class="qa-links"><a href={`${base(lang)}/c/`}>{s.allCategories}</a></p>
+    </main>
+</Layout>

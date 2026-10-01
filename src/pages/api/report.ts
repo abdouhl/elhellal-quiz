@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { questionById } from "../../game/engine";
+import { isStatId } from "../../game/stats";
 
 export const prerender = false;
 
@@ -12,7 +12,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
         return new Response(null, { status: 400 });
     }
     const { id } = body;
-    if (typeof id !== "string" || !questionById(id)) return new Response(null, { status: 400 });
+    if (typeof id !== "string" || !isStatId(id)) return new Response(null, { status: 400 });
 
     const db = locals.runtime?.env?.DB;
     if (!db) return new Response(null, { status: 503 });

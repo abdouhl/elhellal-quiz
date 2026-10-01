@@ -1,0 +1,21 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Daily from "../components/Daily.astro";
+import { SITE, ogUrl, pageAlternates } from "../game/seo";
+import { base, t } from "../i18n";
+import type { Lang } from "../i18n";
+
+const { lang } = Astro.props as { lang: Lang };
+const s = t(lang);
+---
+
+<Layout
+    lang={lang}
+    pageTitle={s.dailyPageTitle}
+    pageDescription={s.dailyPageDesc}
+    canonicalUrl={`${SITE}${base(lang)}/daily/`}
+    ogImage={ogUrl(lang, "daily")}
+    alternates={pageAlternates((l) => `${base(l)}/daily/`)}
+>
+    <Daily lang={lang} />
+</Layout>
