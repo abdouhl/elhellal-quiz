@@ -4,6 +4,7 @@
 import { Resvg } from "@resvg/resvg-js";
 import { decompress } from "wawoff2";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CATEGORY_LABELS, allQuestionIds, questionById } from "../src/game/engine";
@@ -22,11 +23,13 @@ const fonts = {
     "plex-400": "node_modules/@ibm/plex-sans-arabic/fonts/complete/woff2/IBMPlexSansArabic-Regular.woff2",
     "plex-700": "node_modules/@ibm/plex-sans-arabic/fonts/complete/woff2/IBMPlexSansArabic-Bold.woff2",
 };
+// Batch workers (see the bottom of the file) reuse the TTFs the parent already wrote.
+const batch = process.env.OG_BATCH;
 // One at a time: decompress() returns a view into WASM memory that the next call overwrites.
 const fontFiles: string[] = [];
 for (const [name, woff2] of Object.entries(fonts)) {
     const file = path.join(fontDir, `${name}.ttf`);
-    writeFileSync(file, Buffer.from(await decompress(readFileSync(path.join(root, woff2)))));
+    if (!batch) writeFileSync(file, Buffer.from(await decompress(readFileSync(path.join(root, woff2)))));
     fontFiles.push(file);
 }
 const fontOptions = { fontFiles, loadSystemFonts: false, defaultFontFamily: FAMILY };
@@ -172,9 +175,32 @@ function posterSvg(title: string, subtitle: string, tag: string): string {
 const render = (svg: string, name: string) =>
     writeFileSync(path.join(out, `${name}.png`), new Resvg(svg, { font: fontOptions, fitTo: { mode: "width", value: W } }).render().asPng());
 
+const ids = allQuestionIds().map(([id]) => id);
+
+if (batch) {
+    // Worker: render ids[start, end) and exit.
+    const [start, end] = batch.split(":").map(Number);
+    for (const id of ids.slice(start, end)) render(questionSvg(questionById(id)!), id);
+    process.exit(0);
+}
+
+// resvg's native image buffers (~3.5MB each) are never freed under Bun, so rendering every question in one
+// process runs the build machine out of memory. Render in short-lived child processes instead; each one's
+// memory goes back to the OS when it exits, and they run in parallel.
+const BATCH_SIZE = 150;
 const started = Date.now();
-const ids = allQuestionIds();
-for (const [id] of ids) render(questionSvg(questionById(id)!), id);
+const batches: string[] = [];
+for (let i = 0; i < ids.length; i += BATCH_SIZE) batches.push(`${i}:${Math.min(i + BATCH_SIZE, ids.length)}`);
+let done = 0;
+async function runWorker() {
+    for (let b = batches.shift(); b; b = batches.shift()) {
+        const proc = Bun.spawn([process.execPath, fileURLToPath(import.meta.url)], { env: { ...process.env, OG_BATCH: b }, stdout: "inherit", stderr: "inherit" });
+        if ((await proc.exited) !== 0) throw new Error(`og: batch ${b} failed with exit code ${proc.exitCode}`);
+        done += Number(b.split(":")[1]) - Number(b.split(":")[0]);
+        console.log(`og: ${done}/${ids.length}`);
+    }
+}
+await Promise.all(Array.from({ length: Math.min(4, availableParallelism()) }, runWorker));
 render(posterSvg("اختبار لا ينتهي", "جغرافيا، علوم، تاريخ، أدب، أعلام، مشاهير، و«من قال؟». كم نقطة تستطيع أن تجمع؟", "أسئلة بالعربية"), "home");
 render(posterSvg("تحدي اليوم", "١٠ أسئلة جديدة كل يوم، نفس الأسئلة للجميع. هل تتفوق على أصدقائك؟", "كل يوم"), "daily");
 console.log(`og: ${ids.length + 2} images in ${((Date.now() - started) / 1000).toFixed(1)}s`);
