@@ -20,6 +20,12 @@ const { lang, pageTitle, pageDescription, canonicalUrl, ogImage, noindex } = Ast
 const alternates: Alternates = Astro.props.alternates ?? Object.fromEntries(LANGS.map((l) => [l, `${base(l)}/`]));
 const s = t(lang);
 const others = LANGS.filter((l) => l !== lang);
+/** iOS launch screens (built by scripts/build-splash.ts): portrait width × height in pixels, and pixel ratio. */
+const SPLASH: [number, number, number][] = [
+    [1320, 2868, 3], [1206, 2622, 3], [1290, 2796, 3], [1179, 2556, 3], [1284, 2778, 3], [1170, 2532, 3],
+    [1125, 2436, 3], [1242, 2688, 3], [828, 1792, 2], [1242, 2208, 3], [750, 1334, 2], [640, 1136, 2],
+    [2048, 2732, 2], [1668, 2388, 2], [1640, 2360, 2], [1620, 2160, 2], [1536, 2048, 2],
+];
 ---
 
 <!doctype html>
@@ -29,6 +35,9 @@ const others = LANGS.filter((l) => l !== lang);
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
+    {SPLASH.map(([w, h, r]) => (
+        <link rel="apple-touch-startup-image" href={`/splash/${w}x${h}.png`} media={`(device-width: ${w / r}px) and (device-height: ${h / r}px) and (-webkit-device-pixel-ratio: ${r}) and (orientation: portrait)`} />
+    ))}
     <meta name="theme-color" content="#000000" />
     <link rel="manifest" href={`${base(lang)}/manifest.webmanifest`} />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -84,6 +93,12 @@ const others = LANGS.filter((l) => l !== lang);
         </div>
     ))}
 
+    <div class="app-note offline-chip" id="offline-chip" role="status" hidden>{s.offline}</div>
+    <div class="lang-cta app-note" id="update-cta" role="status" hidden>
+        <span>{s.updated}</span>
+        <button type="button" class="install-cta-btn" id="update-btn">{s.reload}</button>
+    </div>
+
     <div class="install-cta" id="install-cta" role="dialog" aria-labelledby="install-cta-title" hidden>
         <img src="/icon-192.png" alt="" width="40" height="40" />
         <div class="install-cta-text">
@@ -96,8 +111,41 @@ const others = LANGS.filter((l) => l !== lang);
 
     <script is:inline>
         if ("serviceWorker" in navigator) {
-            addEventListener("load", () => navigator.serviceWorker.register("/sw.js"));
+            // A page that was already controlled gets a newer worker mid-visit: offer to reload onto it.
+            // (The first install also changes controller, which isn't an update.)
+            const updating = !!navigator.serviceWorker.controller;
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+                if (!updating) return;
+                const cta = document.getElementById("update-cta");
+                cta.hidden = false;
+                document.getElementById("update-btn").addEventListener("click", () => location.reload());
+            });
+            addEventListener("load", () => {
+                navigator.serviceWorker.register("/sw.js");
+                navigator.serviceWorker.ready.then(async (r) => {
+                    // save every question picture for offline play, unless the visitor asked to save data
+                    if (!navigator.connection?.saveData) r.active?.postMessage("cache-pics");
+                    // installed app: let the worker wake up now and then to put the daily dot on the icon
+                    try {
+                        if (!r.periodicSync || !matchMedia("(display-mode: standalone)").matches) return;
+                        const { state } = await navigator.permissions.query({ name: "periodic-background-sync" });
+                        if (state === "granted") await r.periodicSync.register("daily", { minInterval: 6 * 60 * 60 * 1000 });
+                    } catch {}
+                });
+            });
         }
+
+        // Offline: say so, and hide what needs the network ([data-online]).
+        (() => {
+            const chip = document.getElementById("offline-chip");
+            const sync = () => {
+                chip.hidden = navigator.onLine;
+                document.documentElement.classList.toggle("is-offline", !navigator.onLine);
+            };
+            addEventListener("online", sync);
+            addEventListener("offline", sync);
+            sync();
+        })();
 
         (() => {
             const KEY = "install-cta-dismissed";
@@ -110,19 +158,28 @@ const others = LANGS.filter((l) => l !== lang);
                 if (Date.now() - Number(localStorage.getItem(KEY) || 0) < SNOOZE_MS) return;
             } catch {}
 
-            // Only once the visitor has played a little, so the banner never greets a newcomer.
-            const ENGAGED = 10;
-            const engaged = () => {
+            // At a good moment: right after a streak of 5 or a finished daily challenge ("quiz:moment"),
+            // once the visitor has played a little; failing that, after plenty of answers.
+            const answered = () => {
                 try {
-                    return Number(localStorage.getItem("quiz.answered")) >= ENGAGED;
+                    return Number(localStorage.getItem("quiz.answered")) || 0;
                 } catch {
-                    return false;
+                    return 0;
                 }
             };
             const whenEngaged = (fn) => {
-                if (engaged()) return fn();
-                const on = () => engaged() && (removeEventListener("quiz:answered", on), fn());
-                addEventListener("quiz:answered", on);
+                let done = false;
+                const go = () => {
+                    if (done) return;
+                    done = true;
+                    removeEventListener("quiz:moment", onMoment);
+                    removeEventListener("quiz:answered", onAnswer);
+                    fn();
+                };
+                const onMoment = () => answered() >= 5 && go();
+                const onAnswer = () => answered() >= 40 && go();
+                addEventListener("quiz:moment", onMoment);
+                addEventListener("quiz:answered", onAnswer);
             };
 
             const cta = document.getElementById("install-cta");
@@ -139,7 +196,7 @@ const others = LANGS.filter((l) => l !== lang);
                 // iOS has no install prompt API: show manual instructions instead.
                 desc.textContent = desc.dataset.ios;
                 btn.hidden = true;
-                whenEngaged(() => setTimeout(() => (cta.hidden = false), 3000));
+                whenEngaged(() => setTimeout(() => (cta.hidden = false), 1500));
                 return;
             }
 
@@ -173,14 +230,18 @@ const others = LANGS.filter((l) => l !== lang);
             } catch {
                 return;
             }
-            const ARAB = "dz ma tn ly eg sd mr so dj km sa ae qa bh kw om ye iq sy jo lb ps".split(" ");
-            const arabicBrowser = (navigator.languages || [navigator.language]).some((l) => /^ar\b/i.test(l));
+            const COUNTRIES = {
+                ar: "dz ma tn ly eg sd mr so dj km sa ae qa bh kw om ye iq sy jo lb ps".split(" "),
+                es: "es mx ar co pe ve cl ec gt cu bo do hn py sv ni cr pa uy pr gq".split(" "),
+            };
+            const browser = (code) => (navigator.languages || [navigator.language]).some((l) => new RegExp(`^${code}\\b`, "i").test(l));
             fetch("/api/geo")
                 .then((r) => (r.ok ? r.json() : {}))
                 .then(({ country }) => {
-                    const arab = ARAB.includes(String(country || "").toLowerCase());
-                    // Unknown country: go by the browser alone.
-                    const want = arab || arabicBrowser || (!country && lang === "ar") ? "ar" : "en";
+                    const c = String(country || "").toLowerCase();
+                    const fits = (code) => COUNTRIES[code].includes(c) || browser(code);
+                    // Arabic first, then Spanish; otherwise English, or — country unknown — stay put.
+                    const want = fits("ar") ? "ar" : fits("es") ? "es" : country ? "en" : lang;
                     if (want === lang) return;
                     const cta = document.querySelector(`[data-lang-cta="${want}"]`);
                     if (!cta) return;
@@ -288,8 +349,35 @@ const others = LANGS.filter((l) => l !== lang);
         box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
         animation: install-cta-in 0.3s ease-out;
     }
-    .install-cta[hidden], .lang-cta[hidden] {
+    .install-cta[hidden], .lang-cta[hidden], .app-note[hidden] {
         display: none;
+    }
+    .is-offline [data-online] {
+        display: none;
+    }
+    .offline-chip {
+        position: fixed;
+        top: calc(8px + env(safe-area-inset-top));
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1001;
+        padding: 4px 12px;
+        border: 1px solid var(--grey8);
+        border-radius: 999px;
+        background: var(--grey10);
+        color: var(--content-secondary);
+        font-size: 0.8rem;
+        pointer-events: none;
+    }
+    .offline-chip::before {
+        content: "";
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        margin-inline-end: 6px;
+        border-radius: 50%;
+        background: var(--wrong);
+        vertical-align: middle;
     }
     .lang-cta {
         position: fixed;

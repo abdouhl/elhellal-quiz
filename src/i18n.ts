@@ -2,11 +2,11 @@
 // other languages live under /<lang>/.
 import type { Category } from "./game/engine";
 
-export type Lang = "ar" | "en";
-export const LANGS: Lang[] = ["ar", "en"];
+export type Lang = "ar" | "en" | "es";
+export const LANGS: Lang[] = ["ar", "en", "es"];
 export const DEFAULT_LANG: Lang = "ar";
 
-/** Path prefix for a language's pages: "" for Arabic, "/en" for English. */
+/** Path prefix for a language's pages: "" for Arabic, "/en", "/es"… for the others. */
 export const base = (lang: Lang) => (lang === DEFAULT_LANG ? "" : `/${lang}`);
 
 const arDigits = (s: string) => s.replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[+d]);
@@ -141,6 +141,18 @@ const ar = {
     allIntro: (n: number, c: number) => `${n.toLocaleString("ar-EG")} سؤال في ${c.toLocaleString("ar-EG")} قسمًا، لكل منها إجابته. اختر قسمًا أو ابدأ اللعب مباشرة.`,
     countSuffix: (n: number) => `${n.toLocaleString("ar-EG")} سؤال`,
     startQuiz: "ابدأ الاختبار ←",
+    // installed-app extras
+    offline: "بدون إنترنت",
+    updated: "نسخة جديدة جاهزة",
+    reload: "تحديث",
+    review: "راجع أخطاءك",
+    reviewTitle: (n: number) => `${arDigits(String(n))} أسئلة أخطأت فيها — تدرّب عليها`,
+    reviewDone: "لا أخطاء متبقية للمراجعة 👏",
+    dailyStreak: (n: number) => `📅 ${arDigits(String(n))}`,
+    dailyStreakTitle: "أيام متتالية في تحدي اليوم",
+    dailyStreakDue: "العب تحدي اليوم لتحافظ على سلسلتك",
+    cardStreak: "إجابات صحيحة متتالية",
+    cardCta: "هل تتفوق عليّ؟",
 };
 
 export type Strings = typeof ar;
@@ -271,7 +283,159 @@ const en: Strings = {
     allIntro: (n, c) => `${n.toLocaleString("en-US")} questions in ${c} categories, each with its answer. Pick a category or start playing right away.`,
     countSuffix: (n) => `${n.toLocaleString("en-US")} questions`,
     startQuiz: "Start the quiz →",
+    // installed-app extras
+    offline: "Offline",
+    updated: "A new version is ready",
+    reload: "Refresh",
+    review: "Practice mistakes",
+    reviewTitle: (n: number) => `${n} questions you missed — practice them`,
+    reviewDone: "No mistakes left to practice 👏",
+    dailyStreak: (n: number) => `📅 ${n}`,
+    dailyStreakTitle: "Daily challenge days in a row",
+    dailyStreakDue: "Play today's challenge to keep your streak",
+    cardStreak: "correct answers in a row",
+    cardCta: "Can you beat me?",
 };
 
-export const STRINGS: Record<Lang, Strings> = { ar, en };
+const es: Strings = {
+    lang: "es",
+    dir: "ltr",
+    ogLocale: "es_ES",
+    n: (n) => String(n),
+    qty: (n) => n.toLocaleString("es-ES", { maximumFractionDigits: 1 }),
+    year: (y) => String(y),
+    quoted: (s) => `«${s}»`,
+    or: " o ",
+    qMark: "?",
+    listSep: ", ",
+
+    siteName: "Elhellal Quiz",
+    skip: "Saltar al contenido principal",
+    footerDaily: "Reto diario",
+    footerAll: "Todas las preguntas",
+    footerHome: "Elhellal",
+    langName: "Español",
+    suggest: "¿Prefieres jugar en español?",
+    suggestYes: "Jugar en español",
+    installTitle: "Instala Elhellal Quiz",
+    installDesc: "Juega directamente desde tu pantalla de inicio, incluso sin conexión.",
+    installIos: "Toca el botón Compartir ⎋ y luego «Añadir a pantalla de inicio».",
+    install: "Instalar",
+    close: "Cerrar",
+
+    labels: {
+        geo: "Geografía",
+        sci: "Ciencia",
+        hist: "Historia",
+        gen: "Cultura general",
+        lang: "Lengua árabe",
+        lit: "Libros y literatura",
+        quote: "¿Quién lo dijo?",
+        flag: "Banderas",
+        face: "Personajes famosos",
+        place: "Monumentos",
+        tf: "¿Verdadero o falso?",
+        first: "¿Qué ocurrió antes?",
+        more: "¿Más o menos?",
+        year: "¿En qué año?",
+    },
+    picPrompts: { flag: "¿De qué país es esta bandera?", face: "¿Quién es esta persona?", place: "¿Qué monumento es este?" },
+    trueFalse: ["Verdadero", "Falso"],
+    answerIs: (a) => `Respuesta: ${a}`,
+    firstPrompt: "¿Qué ocurrió antes?",
+    listQuestion: /cuál de (los|las) siguientes|cuál de est(os|as)/i,
+    quoteTitle: (t) => `¿Quién dijo: «${t}»?`,
+    claimTitle: (t, c) => `${t} «${c}»: ¿verdadero o falso?`,
+    yearTitle: (t) => `¿En qué año: ${t}?`,
+
+    streakTitle: "Aciertos seguidos",
+    bestTitle: "Mejor racha",
+    report: "Informar de un error en esta pregunta",
+    picAlt: "Imagen de la pregunta",
+    loading: "Cargando…",
+    options: "Opciones",
+    brag: "Comparte tu récord 🔥",
+    next: "Siguiente →",
+    hint: "Pulsa 1–4 para responder y toca en cualquier lugar para seguir.",
+    noscript: "Este juego necesita JavaScript activado.",
+    exact: "¡Exacto! 🎯",
+    yourYear: (y) => `Tu respuesta: ${y}`,
+    right: "Correcto ✓",
+    wrong: "Incorrecto ✗",
+    correctIs: (a) => `Respuesta correcta: ${a}`,
+    bragText: (n) => `Mi récord: ${n} aciertos seguidos 🔥 en Elhellal Quiz. ¿Puedes superarlo?`,
+    reportOk: "¡Gracias! Revisaremos esta pregunta",
+    reportFail: "No se pudo enviar, inténtalo más tarde",
+    copied: "Enlace copiado: pégalo para tus amigos",
+    crowd: (pct) => `El ${pct} % de los jugadores acertó`,
+    yearLabel: "Año",
+    confirm: "Confirmar",
+    tolerance: (n) => `Se acepta una diferencia de hasta ${n} años`,
+
+    dailyChip: "Reto diario",
+    dailyTitle: (n) => `Reto Elhellal n.º ${n}`,
+    endless: "∞ Modo infinito",
+    dailyHint: "10 preguntas, las mismas para todos los jugadores hoy. Termínalas y reta a tus amigos.",
+    shareScore: "Comparte tu resultado ↗",
+    nextIn: "El próximo en",
+    keepPlaying: "Sigue jugando sin parar →",
+    dailyRight: "¡Correcto!",
+    results: "Resultados →",
+    verdicts: ["Más suerte mañana 🌙", "No está mal 🙂", "Muy bien 👏", "¡Excelente! 🧠", "¡Puntuación perfecta! 🏆"],
+    daysInRow: (n) => `🔥 ${n} días seguidos`,
+
+    homeTitle: "Elhellal Quiz — preguntas de cultura general sin fin",
+    homeDesc: "Un quiz de cultura general sin fin: geografía, ciencia, historia, libros, banderas, personajes famosos y monumentos. ¿Cuántas aciertas seguidas?",
+    dailyPageTitle: "Reto diario — Elhellal Quiz",
+    dailyPageDesc: "10 preguntas nuevas cada día, las mismas para todos. Respóndelas, comparte tu resultado y reta a tus amigos.",
+
+    pageTitle: (t) => `${t} — Elhellal Quiz`,
+    showAnswer: "Ver la respuesta",
+    similar: "Preguntas similares",
+    allCategories: "Todas las categorías",
+    tfSeoTitle: (claim, t) => `Verdadero o falso: «${claim}» — ${t}`,
+    pickYear: (min, max) => `Elige el año entre ${min} y ${max}.`,
+    optionsList: (o) => `Opciones: ${o.join(", ")}.`,
+    descTail: "Intenta responder y descubre la solución en Elhellal Quiz.",
+    hubTitles: {
+        geo: "Preguntas de geografía con respuestas",
+        sci: "Preguntas de ciencia con respuestas",
+        hist: "Preguntas de historia con respuestas",
+        gen: "Preguntas de cultura general con respuestas",
+        lang: "Preguntas de lengua árabe con respuestas",
+        lit: "Preguntas de libros y literatura con respuestas",
+        quote: "¿Quién lo dijo? Preguntas de citas con respuestas",
+        flag: "Quiz de banderas: adivina el país, con respuestas",
+        face: "Quiz de personajes famosos con imágenes y respuestas",
+        place: "Quiz de monumentos famosos con imágenes y respuestas",
+        tf: "Preguntas de verdadero o falso con respuestas",
+        first: "¿Qué ocurrió antes? Preguntas de historia con respuestas",
+        more: "¿Cuál es más grande? Preguntas de comparación con respuestas",
+        year: "Adivina el año: quiz de fechas históricas con respuestas",
+    },
+    hubPageTitle: (t, n) => `${t} (${es.qty(n)} preguntas) — Elhellal Quiz`,
+    hubDesc: (n, label, sample) => `${es.qty(n)} preguntas de «${label}» con respuestas, como: ${sample} Ponte a prueba ahora.`,
+    hubIntro: (n, label) => `${es.qty(n)} preguntas en «${label}». Abre cualquiera para intentarlo y ver la respuesta.`,
+    playQuiz: "Jugar al quiz →",
+    allTitle: "Todas las preguntas de Elhellal Quiz — cultura general con respuestas",
+    allDesc: (n) => `${es.qty(n)} preguntas de cultura general con respuestas: geografía, ciencia, historia, libros, banderas, personajes famosos, monumentos y verdadero o falso.`,
+    allH1: "Todas las preguntas de Elhellal Quiz",
+    allIntro: (n, c) => `${es.qty(n)} preguntas en ${c} categorías, cada una con su respuesta. Elige una categoría o empieza a jugar ya.`,
+    countSuffix: (n) => `${es.qty(n)} preguntas`,
+    startQuiz: "Empezar el quiz →",
+    // installed-app extras
+    offline: "Sin conexión",
+    updated: "Hay una nueva versión",
+    reload: "Actualizar",
+    review: "Repasa tus errores",
+    reviewTitle: (n: number) => `${n} preguntas que fallaste: practícalas`,
+    reviewDone: "No quedan errores por repasar 👏",
+    dailyStreak: (n: number) => `📅 ${n}`,
+    dailyStreakTitle: "Días seguidos en el reto diario",
+    dailyStreakDue: "Juega el reto de hoy para mantener tu racha",
+    cardStreak: "aciertos seguidos",
+    cardCta: "¿Me superas?",
+};
+
+export const STRINGS: Record<Lang, Strings> = { ar, en, es };
 export const t = (lang: Lang) => STRINGS[lang];

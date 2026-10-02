@@ -55,11 +55,9 @@ const s = t(lang);
 <script>
     import { CATEGORY_ICONS, DAILY_SIZE, dayKey, dayNumber } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { SITE, countAnswer, crowdLine, home, lang, loadEngine, num, recordAnswer, renderAnswers, s, settleYear, shareWithFeedback, showClaim, showPicture, store } from "../game/client";
+    import { DAILY_KEY as KEY, SITE, countAnswer, crowdLine, haptic, home, keepAwake, loadEngine, markMissed, num, proudMoment, recordAnswer, renderAnswers, s, settleYear, shareCard, showClaim, showPicture, store, syncBadge } from "../game/client";
 
     const { dailyIds, questionById } = await loadEngine();
-    /** Each language has its own daily set, so its progress is saved separately (Arabic keeps the original key). */
-    const KEY = lang === "ar" ? "daily" : `daily.${lang}`;
 
     interface DailyState {
         day: string;
@@ -171,6 +169,9 @@ const s = t(lang);
         save();
         if (state.hits.length === state.ids.length) finishDay();
         countAnswer();
+        markMissed(q.id, ok);
+        haptic(ok);
+        keepAwake();
         recordAnswer(q.id, ok).then((c) => {
             if (question === q) el.crowd.textContent = crowdLine(c);
         });
@@ -194,6 +195,8 @@ const s = t(lang);
         const streak = store.get(`${KEY}.last`) === dayKey(d) ? (Number(store.get(`${KEY}.streak`)) || 0) + 1 : 1;
         store.set(`${KEY}.streak`, String(streak));
         store.set(`${KEY}.last`, today);
+        syncBadge();
+        proudMoment();
     }
 
     function verdict(score: number): string {
@@ -221,7 +224,11 @@ const s = t(lang);
         el.rVerdict.textContent = verdict(score);
         el.rStreak.textContent = streakLine;
         el.rShare.onclick = () =>
-            shareWithFeedback([`${title} — ${num(score)}/${num(DAILY_SIZE)}`, grid, streakLine].filter(Boolean).join("\n"), `${SITE}${home}daily/`);
+            shareCard(
+                { kicker: title, big: `${num(score)}/${num(DAILY_SIZE)}`, sub: verdict(score), foot: grid },
+                [`${title} — ${num(score)}/${num(DAILY_SIZE)}`, grid, streakLine].filter(Boolean).join("\n"),
+                `${SITE}${home}daily/`,
+            );
         el.rShare.focus();
         tick();
         setInterval(tick, 1000);
@@ -251,5 +258,6 @@ const s = t(lang);
     });
 
     save();
+    syncBadge();
     advance();
 </script>

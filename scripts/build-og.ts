@@ -29,6 +29,11 @@ const OG = {
         home: ["An endless quiz", "Geography, science, history, books, flags, famous faces and landmarks. How far can you go?", "Trivia"],
         daily: ["Daily challenge", "10 new questions every day, the same for everyone. Can you beat your friends?", "Every day"],
     },
+    es: {
+        cta: "¿Sabes la respuesta?",
+        home: ["Un quiz sin fin", "Geografía, ciencia, historia, libros, banderas, personajes famosos y monumentos. ¿Hasta dónde llegarás?", "Cultura general"],
+        daily: ["Reto diario", "10 preguntas nuevas cada día, las mismas para todos. ¿Superarás a tus amigos?", "Cada día"],
+    },
 } as const satisfies Record<Lang, unknown>;
 
 // The site's ROM font has no Arabic glyphs (browsers fall back to a system font), so images use IBM Plex Sans Arabic.

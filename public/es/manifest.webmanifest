@@ -1,14 +1,14 @@
 {
-  "name": "اختبار الهلال — أسئلة لا تنتهي",
-  "short_name": "اختبار الهلال",
-  "description": "اختبار عربي لا ينتهي: ثقافة عامة وجغرافيا وعلوم وتاريخ وأدب.",
-  "id": "/",
-  "start_url": "/",
-  "scope": "/",
+  "name": "Elhellal Quiz — preguntas sin fin",
+  "short_name": "Elhellal Quiz",
+  "description": "Un quiz de cultura general sin fin: geografía, ciencia, historia, libros, banderas, personajes famosos y monumentos.",
+  "id": "/es/",
+  "start_url": "/es/",
+  "scope": "/es/",
   "display": "standalone",
   "orientation": "portrait",
-  "dir": "rtl",
-  "lang": "ar",
+  "dir": "ltr",
+  "lang": "es",
   "background_color": "#000000",
   "theme_color": "#000000",
   "categories": [
@@ -49,8 +49,8 @@
   },
   "shortcuts": [
     {
-      "name": "تحدي اليوم",
-      "url": "/daily/",
+      "name": "Reto diario",
+      "url": "/es/daily/",
       "icons": [
         {
           "src": "/icon-192.png",
@@ -60,8 +60,8 @@
       ]
     },
     {
-      "name": "الوضع اللانهائي",
-      "url": "/",
+      "name": "Modo infinito",
+      "url": "/es/",
       "icons": [
         {
           "src": "/icon-192.png",
@@ -71,8 +71,8 @@
       ]
     },
     {
-      "name": "راجع أخطاءك",
-      "url": "/?review",
+      "name": "Repasa tus errores",
+      "url": "/es/?review",
       "icons": [
         {
           "src": "/icon-192.png",
@@ -82,8 +82,8 @@
       ]
     },
     {
-      "name": "كل الأسئلة",
-      "url": "/c/",
+      "name": "Todas las preguntas",
+      "url": "/es/c/",
       "icons": [
         {
           "src": "/icon-192.png",
@@ -95,25 +95,25 @@
   ],
   "screenshots": [
     {
-      "src": "/screens/ar-picture.png",
+      "src": "/screens/es-picture.png",
       "sizes": "1080x1920",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "سؤال بالصور"
+      "label": "Pregunta con imagen"
     },
     {
-      "src": "/screens/ar-answer.png",
+      "src": "/screens/es-answer.png",
       "sizes": "1080x1920",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "إجابة صحيحة وسلسلة متتالية"
+      "label": "Acierto y racha"
     },
     {
-      "src": "/screens/ar-daily.png",
+      "src": "/screens/es-daily.png",
       "sizes": "1080x1920",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "تحدي اليوم"
+      "label": "El reto diario"
     }
   ]
 }

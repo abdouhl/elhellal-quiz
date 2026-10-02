@@ -168,8 +168,12 @@ const DAILY_V2 = "2026-09-26";
 const DAILY_V3 = "2026-09-27";
 /** From this day on the Arabic daily set leaves out the retired categories. */
 const DAILY_V4 = "2026-10-02";
+/** From this day on the daily sets (every language) also draw from the bank rows added after BANK_V2. */
+const DAILY_V5 = "2026-10-03";
 /** Bank rows at or past this index were added after DAILY_V2 went live; Arabic dailies before DAILY_V3 leave them out. */
 const BANK_V1 = 701;
+/** Bank rows at or past this index were added on 2026-10-01; dailies before DAILY_V5 leave them out. */
+const BANK_V2 = 883;
 export const DAILY_SIZE = 10;
 
 /** `YYYY-MM-DD` for the player's local calendar day. */
@@ -201,10 +205,11 @@ export function createEngine(content: Content, s: Strings) {
         add("lit", { kind: "author-book", i });
     });
     pics.forEach((p, i) => add(p.k, { kind: "pic", i }));
-    const isBankV2 = (qid: string) => {
+    const bankIndex = (qid: string) => {
         const m = /^[bt](\d+)$/.exec(qid);
-        return !!m && +m[1] >= BANK_V1;
+        return m ? +m[1] : -1;
     };
+    const isBankV2 = (qid: string) => bankIndex(qid) >= BANK_V1;
     /** Ids that existed before the number-based types; the Arabic daily drew only from these until DAILY_V2. */
     const legacyCount = registry.size - (bank.length - BANK_V1);
     // "Which of the following…" makes no sense without the list, so those stay out of true-or-false.
@@ -404,8 +409,10 @@ export function createEngine(content: Content, s: Strings) {
             const pool = key < DAILY_V4 ? registeredIds() : allQuestionIds();
             all = key < DAILY_V3 ? pool.filter(([qid]) => !isBankV2(qid)) : pool;
             if (key < DAILY_V2) all = all.slice(0, legacyCount);
+            else if (key < DAILY_V5) all = all.filter(([qid]) => bankIndex(qid) < BANK_V2);
         } else {
             all = allQuestionIds();
+            if (key < DAILY_V5) all = all.filter(([qid]) => bankIndex(qid) < BANK_V2);
             seed = `daily:${content.lang}:${key}`;
         }
         const perCategory = new Map<Category, number>();

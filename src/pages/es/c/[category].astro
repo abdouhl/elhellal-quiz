@@ -1,0 +1,11 @@
+---
+import HubPage from "../../../views/HubPage.astro";
+import type { Category } from "../../../game/engine";
+import { categories } from "../../../game/seo";
+
+export function getStaticPaths() {
+    return categories("es").map((category) => ({ params: { category } }));
+}
+---
+
+<HubPage lang="es" category={Astro.params.category as Category} />

@@ -238,3 +238,7 @@ button:disabled { cursor: default; }
     .yp-val { font-size: 2.6rem; }
     .yp-step { min-width: 44px; padding: 10px 4px; }
 }
+/* Daily challenge streak still to keep today */
+.chip-due { border-color: var(--accent); color: var(--accent); animation: due-pulse 2.4s ease-in-out infinite; }
+@keyframes due-pulse { 50% { box-shadow: 0 0 0 3px rgb(255 140 0 / 0.25); } }
+@media (prefers-reduced-motion: reduce) { .chip-due { animation: none; } }
