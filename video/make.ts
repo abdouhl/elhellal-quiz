@@ -12,6 +12,13 @@
  *   bun run video --long                # 20 questions
  *   bun run video --long 30 --timer 7   # 30 questions, 7-second countdowns
  *   bun run video --long 25 --cat geo   # all from one category
+ *   bun run video --long --count 15     # 15 videos, one per upcoming day (dated after the last one made)
+ *
+ * YouTube batch (one long video + one Short per day, all in one folder, plus a prompt for Claude in Chrome):
+ *   bun run video --youtube 2026-10-15 2026-10-24                 # → <out>/youtube-2026-10-15_2026-10-24/
+ *   bun run video --youtube 2026-10-15 2026-10-24 --long-time 19:00 --short-time 13:00
+ *   Files: <date>-long.mp4, <date>-long-thumbnail.jpg, <date>-short.mp4, videos.json, upload-prompt.txt.
+ *   Re-running the same range skips the videos already made (resume after a stop).
  *
  * Common: --no-voice (music and effects only), --out <folder> (default ~/Desktop/quiz-videos).
  *
@@ -55,9 +62,18 @@ const API_KEY = process.env.ELEVENLABS_API_KEY;
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb";
 const MODEL = process.env.ELEVENLABS_MODEL || "eleven_multilingual_v2";
 const voiceOn = !argv.includes("--no-voice");
+const ytFrom = arg("youtube");
+const ytTo = ytFrom ? argv[argv.indexOf("--youtube") + 2] : undefined;
+const longTime = arg("long-time") ?? "19:00";
+const shortTime = arg("short-time") ?? "13:00";
 
 if (onlyCat && !(onlyCat in CATEGORY_LABELS)) throw new Error(`Unknown category "${onlyCat}". Try: ${Object.keys(CATEGORY_LABELS).join(", ")}`);
 for (const f of formats) if (!["vertical", "square", "landscape"].includes(f)) throw new Error(`Unknown format "${f}"`);
+if (ytFrom) {
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    if (!day.test(ytFrom) || !day.test(ytTo ?? "") || ytTo! < ytFrom) throw new Error("Use --youtube <from YYYY-MM-DD> <to YYYY-MM-DD>, with from ≤ to.");
+    for (const t of [longTime, shortTime]) if (!/^\d{2}:\d{2}$/.test(t)) throw new Error(`Times are HH:MM, got "${t}"`);
+}
 if ((await $`which ffmpeg`.nothrow().quiet()).exitCode !== 0) throw new Error("ffmpeg is missing: brew install ffmpeg");
 if (voiceOn && !API_KEY) throw new Error("Set ELEVENLABS_API_KEY in video/.env (or pass --no-voice).");
 
@@ -145,10 +161,30 @@ const CAT_TAGS: Partial<Record<Category, string>> = {
 };
 const credits = (qs: Question[]) => qs.filter((q) => q.credit).map((q) => `📷 ${q.credit}${q.creditUrl ? ` (${q.creditUrl})` : ""}`);
 
+/** What YouTube Studio's upload form takes. */
+interface YtCopy { title: string; description: string; tags: string[] }
+
+function shortCopy(q: Question, n: number): YtCopy {
+    const title = questionTitle(q);
+    const tags = [CAT_TAGS[q.category], ...HASHTAGS].filter(Boolean).join(" ");
+    const credit = credits([q]).map((c) => `\n${c}`).join("");
+    return {
+        title: `${title.length > 70 ? `${title.slice(0, 68)}…` : title} | سؤال #${n} #Shorts`,
+        description: `${title}
+عندك ٥ ثوانٍ… اكتب إجابتك في التعليقات 👇 الإجابة في آخر الفيديو.
+
+🎮 العب السؤال على الموقع: https://${SITE}/q/${q.id}/
+♾️ اختبار لا ينتهي + تحدٍّ يومي: https://${SITE}/${credit}
+
+${tags} #Shorts`,
+        tags: [CATEGORY_LABELS[q.category], "اختبار", "معلومات عامة", "سؤال وجواب", "ثقافة عامة", "تحدي", "quiz", "arabic quiz"],
+    };
+}
+
 function post(q: Question, n: number): string {
     const title = questionTitle(q);
     const tags = [CAT_TAGS[q.category], ...HASHTAGS].filter(Boolean).join(" ");
-    const ytTitle = `${title.length > 70 ? `${title.slice(0, 68)}…` : title} | سؤال #${n} #Shorts`;
+    const yt = shortCopy(q, n);
     const credit = credits([q]).map((c) => `\n${c}`).join("");
     const link = `https://${SITE}/q/${q.id}/`;
     // X counts every link as 23 characters; keep the whole tweet within 280.
@@ -167,19 +203,13 @@ ${tweetTitle} 🤔
 
 === YouTube Shorts ===
 Title:
-${ytTitle}
+${yt.title}
 
 Description:
-${title}
-عندك ٥ ثوانٍ… اكتب إجابتك في التعليقات 👇 الإجابة في آخر الفيديو.
-
-🎮 العب السؤال على الموقع: ${link}
-♾️ اختبار لا ينتهي + تحدٍّ يومي: https://${SITE}/${credit}
-
-${tags} #Shorts
+${yt.description}
 
 Tags:
-${[CATEGORY_LABELS[q.category], "اختبار", "معلومات عامة", "سؤال وجواب", "ثقافة عامة", "تحدي", "quiz", "arabic quiz"].join(", ")}
+${yt.tags.join(", ")}
 `;
 }
 
@@ -303,12 +333,16 @@ async function still(comp: string, props: object, work: string, out: string, fra
 
 // ---------- single question ----------
 
-async function single() {
+/** Where a batch puts a video: `<dir>/<base>.mp4` (+ cover/thumbnail), no post.txt. */
+interface Target { dir: string; base: string }
+interface Made { file: string; thumbnail?: string; yt: YtCopy }
+
+async function single(target?: Target): Promise<Made> {
     const [q] = choose(1, new Set(history.videos.map((v) => v.id)));
     const n = (history.videos.at(-1)?.n ?? 0) + 1;
     const seed = Math.floor(Math.random() * 2 ** 31);
     const hook = HOOKS[Math.floor(Math.random() * HOOKS.length)];
-    const dir = join(outDir, `${String(n).padStart(3, "0")}-${q.id}`);
+    const dir = target?.dir ?? join(outDir, `${String(n).padStart(3, "0")}-${q.id}`);
     const work = mkdtempSync(join(tmpdir(), "quiz-video-"));
     mkdirSync(dir, { recursive: true });
     console.log(`\n▶ #${n}  [${q.category}] ${questionTitle(q)}  →  ${q.options[q.answer]}`);
@@ -326,19 +360,22 @@ async function single() {
     await Bun.write(join(work, "sfx.wav"), wav(sfx(T, seed)));
     const audio = await mixAudio(work, cues, T.end);
 
-    const files: Record<Format, string> = { vertical: "vertical.mp4", square: "square-x.mp4", landscape: "landscape.mp4" };
-    for (const format of formats) {
+    const files: Record<Format, string> = target
+        ? { vertical: `${target.base}.mp4`, square: `${target.base}-square.mp4`, landscape: `${target.base}-landscape.mp4` }
+        : { vertical: "vertical.mp4", square: "square-x.mp4", landscape: "landscape.mp4" };
+    const fmts: Format[] = target ? ["vertical"] : formats;
+    for (const format of fmts) {
         const props: QuizProps = { ...seg.props, format, episode: n, hook: hook.screen };
         await render("Quiz", props, work, join(dir, files[format]), audio);
-        if (format === formats[0]) await still("Quiz", props, work, join(dir, "cover.jpg"), Math.round((T.cdStart + 0.8) * 60));
+        if (format === fmts[0]) await still("Quiz", props, work, join(dir, target ? `${target.base}-cover.jpg` : "cover.jpg"), Math.round((T.cdStart + 0.8) * 60));
         console.log(`  ✓ ${format}`);
     }
-    writeFileSync(join(dir, "post.txt"), post(q, n));
+    if (!target) writeFileSync(join(dir, "post.txt"), post(q, n));
     rmSync(work, { recursive: true, force: true });
     history.videos.push({ n, id: q.id, date: new Date().toISOString().slice(0, 10) });
     saveHistory();
     console.log(`  ✓ ${T.end.toFixed(1)}s → ${dir}`);
-    return join(dir, files[formats[0]]);
+    return { file: join(dir, files[fmts[0]]), yt: shortCopy(q, n) };
 }
 
 // ---------- long YouTube marathon ----------
@@ -354,17 +391,29 @@ const clock = (s: number) => {
     return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}:${String(r).padStart(2, "0")}` : `${m}:${String(r).padStart(2, "0")}`;
 };
 
-async function marathon() {
+/** One marathon per day: the day after the latest one made, or today if that's later. */
+function nextLongDate(): string {
+    const today = new Date().toISOString().slice(0, 10);
+    const last = history.long!.map((l) => l.date).sort().at(-1);
+    if (!last || last < today) return today;
+    const d = new Date(`${last}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+}
+
+async function marathon(target?: Target & { date: string }): Promise<Made> {
     const used = new Set(history.long!.flatMap((l) => l.ids));
     const qs = choose(longN, used);
     const timer = Math.max(3, Number(arg("timer") ?? 7));
     const topic = onlyCat ? `في ${CATEGORY_LABELS[onlyCat]}` : "في الثقافة العامة";
     const seed = Math.floor(Math.random() * 2 ** 31);
-    const date = new Date().toISOString().slice(0, 10);
-    const dir = join(outDir, `long-${date}-${longN}q${onlyCat ? `-${onlyCat}` : ""}`);
+    const date = target?.date ?? nextLongDate();
+    const dir = target?.dir ?? join(outDir, `long-${date}-${longN}q${onlyCat ? `-${onlyCat}` : ""}`);
+    const video = join(dir, target ? `${target.base}.mp4` : "video.mp4");
+    const thumbnail = join(dir, target ? `${target.base}-thumbnail.jpg` : "thumbnail.jpg");
     const work = mkdtempSync(join(tmpdir(), "quiz-long-"));
     mkdirSync(dir, { recursive: true });
-    console.log(`\n▶ Marathon: ${longN} questions ${topic}, ${timer}s each`);
+    console.log(`\n▶ Marathon ${date}: ${longN} questions ${topic}, ${timer}s each`);
 
     const cues: Cue[] = [];
     const musicParts: Stereo[] = [], sfxParts: Stereo[] = [];
@@ -413,21 +462,16 @@ async function marathon() {
 
     const props: MarathonProps = { format: "landscape", n: longN, timer, topic, intro, segments, outro, end };
     console.log(`  rendering ${clock(end)} of video…`);
-    await render("Marathon", props, work, join(dir, "video.mp4"), audio);
-    await still("Thumb", thumbProps(qs, topic), work, join(dir, "thumbnail.jpg"));
+    await render("Marathon", props, work, video, audio);
+    await still("Thumb", thumbProps(qs, topic), work, thumbnail);
 
     // YouTube copy with chapters (the first must be 0:00).
     const chapters = ["0:00 المقدمة", ...segments.map((s, i) => `${clock(s.from)} سؤال ${i + 1} — ${CATEGORY_LABELS[qs[i].category]}`), `${clock(outro.from)} النتيجة`];
     const tags = [...new Set(qs.map((q) => CAT_TAGS[q.category]).filter(Boolean))].slice(0, 4).join(" ");
     const cr = credits(qs);
-    writeFileSync(
-        join(dir, "post.txt"),
-        `=== YouTube ===
-Title:
-${longN} سؤالاً ${topic} 🧠 هل تستطيع الإجابة عليها كلها؟ | اختبار الهلال
-
-Description:
-${longN} سؤالاً ${topic}، ولكل سؤال ${timer} ثوانٍ فقط ⏱️
+    const yt: YtCopy = {
+        title: `${longN} سؤالاً ${topic} 🧠 هل تستطيع الإجابة عليها كلها؟ | اختبار الهلال #${history.long!.length + 1}`,
+        description: `${longN} سؤالاً ${topic}، ولكل سؤال ${timer} ثوانٍ فقط ⏱️
 احسب نقاطك واكتب نتيجتك في التعليقات 👇
 
 🎮 العب بلا توقف: https://${SITE}/
@@ -436,23 +480,116 @@ ${longN} سؤالاً ${topic}، ولكل سؤال ${timer} ثوانٍ فقط �
 الفصول:
 ${chapters.join("\n")}
 ${cr.length ? `\nحقوق الصور:\n${cr.join("\n")}\n` : ""}
-#اختبار #معلومات_عامة #سؤال_وجواب #ثقافة_عامة ${tags}
+#اختبار #معلومات_عامة #سؤال_وجواب #ثقافة_عامة ${tags}`,
+        tags: ["اختبار", "اسئلة ثقافية", "معلومات عامة", "سؤال وجواب", "ثقافة عامة", "تحدي", "مسابقة", "quiz", "arabic quiz", ...new Set(qs.map((q) => CATEGORY_LABELS[q.category]))],
+    };
+    if (!target) {
+        writeFileSync(
+            join(dir, "post.txt"),
+            `=== YouTube ===
+Title:
+${yt.title}
+
+Description:
+${yt.description}
 
 Tags:
-${["اختبار", "اسئلة ثقافية", "معلومات عامة", "سؤال وجواب", "ثقافة عامة", "تحدي", "مسابقة", "quiz", "arabic quiz", ...new Set(qs.map((q) => CATEGORY_LABELS[q.category]))].join(", ")}
+${yt.tags.join(", ")}
 
 === Answers (for pinning a comment, optional) ===
 ${qs.map((q, i) => `${i + 1}. ${q.options[q.answer]}`).join("\n")}
 `,
-    );
+        );
+    }
     rmSync(work, { recursive: true, force: true });
     history.long!.push({ date, ids: qs.map((q) => q.id) });
     saveHistory();
-    console.log(`  ✓ ${clock(end)} → ${dir}`);
-    return join(dir, "video.mp4");
+    console.log(`  ✓ ${clock(end)} → ${video}`);
+    return { file: video, thumbnail, yt };
 }
 
-let last = "";
-if (longMode) last = await marathon();
-else for (let i = 0; i < count; i++) last = await single();
-if (process.platform === "darwin" && (longMode || count === 1)) await $`open ${last}`.nothrow();
+// ---------- YouTube batch ----------
+
+interface BatchVideo { date: string; kind: "long" | "short"; time: string; file: string; thumbnail?: string; yt: YtCopy }
+
+function days(from: string, to: string): string[] {
+    const out: string[] = [];
+    for (const d = new Date(`${from}T00:00:00Z`); d.toISOString().slice(0, 10) <= to; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10));
+    return out;
+}
+
+/** Step-by-step instructions for Claude in Chrome to upload and schedule every video in YouTube Studio. */
+function uploadPrompt(dir: string, videos: BatchVideo[]): string {
+    const block = (v: BatchVideo, i: number) => `
+──────── VIDEO ${i + 1}/${videos.length} — ${v.date} ${v.kind === "long" ? "LONG (16:9)" : "SHORT (vertical)"} ────────
+File: ${v.file}${v.thumbnail ? `\nThumbnail: ${v.thumbnail}` : ""}
+Schedule: ${v.date} at ${v.time}
+
+Title:
+${v.yt.title}
+
+Description:
+${v.yt.description}
+
+Tags:
+${v.yt.tags.join(", ")}
+`;
+    return `Upload and schedule ${videos.length} videos to my YouTube channel (quiz.elhellal.com — Arabic quiz videos) using YouTube Studio in this browser.
+
+How to do each video, one at a time, in the order listed:
+1. Go to https://studio.youtube.com, click Create → Upload videos, and upload the file at "File" (use the file upload tool with that exact path).
+2. Details page: replace the Title with the given title and the Description with the given description, exactly as written (Arabic, keep emojis, line breaks and hashtags).
+3. If a Thumbnail is listed, upload it as the custom thumbnail (Shorts have none — skip).
+4. Audience: "No, it's not made for kids".
+5. Click "Show more" → Tags: paste the tags (comma-separated). Leave everything else as is.
+6. Next through Video elements and Checks (no changes), then on Visibility choose "Schedule" and set the date and time given under "Schedule" (the channel's own time zone).
+7. Click Schedule, wait until the dialog confirms, then move on to the next video.
+
+Rules:
+- Before starting, open the Content tab and check which of these titles are already uploaded or scheduled; skip those.
+- Never publish anything immediately — every video must be Scheduled, never Public or Unlisted.
+- If an upload fails or a field won't accept the text, stop and tell me which video and what happened.
+- At the end, give me a table: date, long/short, title, video link, scheduled time.
+
+Folder: ${dir}
+${videos.map(block).join("")}`;
+}
+
+async function youtubeBatch() {
+    const dir = join(outDir, `youtube-${ytFrom}_${ytTo}`);
+    mkdirSync(dir, { recursive: true });
+    const manifest = join(dir, "videos.json");
+    const videos: BatchVideo[] = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")) : [];
+    const save = () => {
+        videos.sort((a, b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind));
+        writeFileSync(manifest, `${JSON.stringify(videos, null, 2)}\n`);
+        writeFileSync(join(dir, "upload-prompt.txt"), uploadPrompt(dir, videos));
+    };
+    const list = days(ytFrom!, ytTo!);
+    console.log(`YouTube batch: ${list.length} day(s), a long video at ${longTime} and a Short at ${shortTime} each → ${dir}`);
+    for (const [i, date] of list.entries()) {
+        for (const kind of ["long", "short"] as const) {
+            const base = `${date}-${kind}`;
+            if (videos.some((v) => v.date === date && v.kind === kind) && existsSync(join(dir, `${base}.mp4`))) {
+                console.log(`\n· ${base} already made — skipped`);
+                continue;
+            }
+            console.log(`\n[day ${i + 1}/${list.length}] ${base}`);
+            const made = kind === "long" ? await marathon({ dir, base, date }) : await single({ dir, base });
+            const at = videos.findIndex((v) => v.date === date && v.kind === kind);
+            if (at >= 0) videos.splice(at, 1);
+            videos.push({ date, kind, time: kind === "long" ? longTime : shortTime, ...made });
+            save();
+        }
+    }
+    save();
+    console.log(`\n✓ ${videos.length} videos in ${dir}\n  Give upload-prompt.txt to Claude in Chrome to upload and schedule them.`);
+    if (process.platform === "darwin") await $`open ${dir}`.nothrow();
+}
+
+if (ytFrom) await youtubeBatch();
+else {
+    let last = "";
+    for (let i = 0; i < count; i++) last = (longMode ? await marathon() : await single()).file;
+    if (process.platform === "darwin" && count === 1) await $`open ${last}`.nothrow();
+}

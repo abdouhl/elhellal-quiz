@@ -82,6 +82,7 @@ const SPLASH: [number, number, number][] = [
             <a href={alternates[l] ?? `${base(l)}/`} hreflang={l} lang={l} data-lang-choice={l}>{t(l).langName}</a>
         ))}
         <a href="https://elhellal.com">{s.footerHome}</a>
+        {lang === "ar" && <a href="https://elhellal.com/app/?source=quiz">تطبيق الهلال</a>}
     </footer>
 
     <!-- Offered once to visitors whose location or browser suggests the other language (see the script below). -->
@@ -99,13 +100,15 @@ const SPLASH: [number, number, number][] = [
         <button type="button" class="install-cta-btn" id="update-btn">{s.reload}</button>
     </div>
 
-    <div class="install-cta" id="install-cta" role="dialog" aria-labelledby="install-cta-title" hidden>
-        <img src="/icon-192.png" alt="" width="40" height="40" />
+    <!-- Arabic pages offer the elhellal.com app instead of this site's own: it has
+         the question of the day (Explore tab) with the articles, quotes and books. -->
+    <div class="install-cta" id="install-cta" role="dialog" aria-labelledby="install-cta-title" data-hellal={lang === "ar" ? "" : undefined} hidden>
+        <img src={lang === "ar" ? "https://elhellal.com/icon-192.png" : "/icon-192.png"} alt="" width="40" height="40" />
         <div class="install-cta-text">
-            <strong id="install-cta-title">{s.installTitle}</strong>
-            <span id="install-cta-desc" data-ios={s.installIos}>{s.installDesc}</span>
+            <strong id="install-cta-title">{lang === "ar" ? "ثبّت تطبيق الهلال" : s.installTitle}</strong>
+            <span id="install-cta-desc" data-ios={s.installIos}>{lang === "ar" ? "سؤال كل يوم مع المقالات والاقتباسات وملخصات الكتب، في تطبيق واحد يعمل دون إنترنت." : s.installDesc}</span>
         </div>
-        <button type="button" class="install-cta-btn" id="install-cta-btn">{s.install}</button>
+        <button type="button" class="install-cta-btn" id="install-cta-btn">{lang === "ar" ? "ثبّته" : s.install}</button>
         <button type="button" class="install-cta-close" id="install-cta-close" aria-label={s.close}>×</button>
     </div>
 
@@ -153,7 +156,12 @@ const SPLASH: [number, number, number][] = [
             const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
             const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
                 (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-            if (standalone || !mobile) return;
+            const cta = document.getElementById("install-cta");
+            // Arabic: point to the elhellal.com app, also from inside this site's installed app.
+            const hellal = cta.hasAttribute("data-hellal");
+            if (hellal) addEventListener("beforeinstallprompt", (e) => e.preventDefault());
+            // (Opened from the elhellal.com app itself — its window can hold this site — say nothing.)
+            if ((standalone && (!hellal || document.referrer.startsWith("https://elhellal.com"))) || !mobile) return;
             try {
                 if (Date.now() - Number(localStorage.getItem(KEY) || 0) < SNOOZE_MS) return;
             } catch {}
@@ -182,7 +190,6 @@ const SPLASH: [number, number, number][] = [
                 addEventListener("quiz:answered", onAnswer);
             };
 
-            const cta = document.getElementById("install-cta");
             const btn = document.getElementById("install-cta-btn");
             const desc = document.getElementById("install-cta-desc");
             const hide = (remember) => {
@@ -190,6 +197,14 @@ const SPLASH: [number, number, number][] = [
                 if (remember) try { localStorage.setItem(KEY, String(Date.now())); } catch {}
             };
             document.getElementById("install-cta-close").addEventListener("click", () => hide(true));
+            if (hellal) {
+                btn.addEventListener("click", () => {
+                    hide(true);
+                    location.href = "https://elhellal.com/app/?source=quiz";
+                });
+                whenEngaged(() => setTimeout(() => (cta.hidden = false), 1500));
+                return;
+            }
 
             const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && navigator.platform === "MacIntel";
             if (ios) {
