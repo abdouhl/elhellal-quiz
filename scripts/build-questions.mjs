@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const quotesPath = process.env.QUOTES_JSON ?? path.join(root, "../elhellal/src/data/quotes.json");
+const quotesPath = process.env.QUOTES_JSON ?? path.join(root, "../elhellal-quotes/src/data/quotes.json");
 const booksPath = process.env.BOOKS_JSON ?? path.join(root, "../elhellal-books/src/data/books.json");
 
 const norm = (s) => s.replace(/\s+/g, " ").trim();

@@ -40,6 +40,14 @@ const SPLASH: [number, number, number][] = [
     ))}
     <meta name="theme-color" content="#000000" />
     <link rel="manifest" href={`${base(lang)}/manifest.webmanifest`} />
+    <!-- Framed by the elhellal.com app's Quiz tab (/quiz/ there): it has its own chrome, so drop ours. -->
+    <script is:inline>
+        try {
+            if (window.top !== window.self) document.documentElement.setAttribute("data-embedded", "");
+        } catch {
+            document.documentElement.setAttribute("data-embedded", "");
+        }
+    </script>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
@@ -161,6 +169,7 @@ const SPLASH: [number, number, number][] = [
             const hellal = cta.hasAttribute("data-hellal");
             if (hellal) addEventListener("beforeinstallprompt", (e) => e.preventDefault());
             // (Opened from the elhellal.com app itself — its window can hold this site — say nothing.)
+            if (document.documentElement.hasAttribute("data-embedded")) return;
             if ((standalone && (!hellal || document.referrer.startsWith("https://elhellal.com"))) || !mobile) return;
             try {
                 if (Date.now() - Number(localStorage.getItem(KEY) || 0) < SNOOZE_MS) return;
@@ -241,7 +250,7 @@ const SPLASH: [number, number, number][] = [
             };
             document.querySelectorAll("[data-lang-choice]").forEach((a) => a.addEventListener("click", () => remember(a.dataset.langChoice)));
             try {
-                if (localStorage.getItem(KEY)) return;
+                if (localStorage.getItem(KEY) || document.documentElement.hasAttribute("data-embedded")) return;
             } catch {
                 return;
             }
@@ -304,6 +313,10 @@ const SPLASH: [number, number, number][] = [
     html {
         font-family: var(--body-copy);
         background-color: var(--background-high-contrast);
+    }
+    html[data-embedded] .site-footer,
+    html[data-embedded] .skip-link {
+        display: none;
     }
     body {
         margin: 0;
