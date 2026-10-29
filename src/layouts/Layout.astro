@@ -72,6 +72,16 @@ const SPLASH: [number, number, number][] = [
     <slot name="head" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@abdou_hll" />
+    <!-- Google tag (gtag.js) — same GA4 property as elhellal.com -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-MLVB12BM2C"></script>
+    <script is:inline>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() {
+            window.dataLayer.push(arguments);
+        }
+        gtag("js", new Date());
+        gtag("config", "G-MLVB12BM2C");
+    </script>
     <!-- Google AdSense (same publisher account as elhellal.com) -->
     <script
         async
