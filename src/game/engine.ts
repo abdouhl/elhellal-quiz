@@ -172,12 +172,16 @@ const DAILY_V4 = "2026-10-02";
 const DAILY_V5 = "2026-10-03";
 /** From this day on the daily sets (every language) also draw from the bank rows added after BANK_V3. */
 const DAILY_V6 = "2026-10-22";
+/** From this day on the daily sets (every language) also draw from the bank rows added after BANK_V4. */
+const DAILY_V7 = "2026-11-01";
 /** Bank rows at or past this index were added after DAILY_V2 went live; Arabic dailies before DAILY_V3 leave them out. */
 const BANK_V1 = 701;
 /** Bank rows at or past this index were added on 2026-10-01; dailies before DAILY_V5 leave them out. */
 const BANK_V2 = 883;
 /** Bank rows at or past this index were added on 2026-10-14, 2026-10-19, 2026-10-20 (two batches) and 2026-10-21 (two batches); dailies before DAILY_V6 leave them out. */
 const BANK_V3 = 1169;
+/** Bank rows at or past this index were added on 2026-10-31; dailies before DAILY_V7 leave them out. */
+const BANK_V4 = 2269;
 export const DAILY_SIZE = 10;
 
 /** `YYYY-MM-DD` for the player's local calendar day. */
@@ -415,10 +419,12 @@ export function createEngine(content: Content, s: Strings) {
             if (key < DAILY_V2) all = all.slice(0, legacyCount);
             else if (key < DAILY_V5) all = all.filter(([qid]) => bankIndex(qid) < BANK_V2);
             else if (key < DAILY_V6) all = all.filter(([qid]) => bankIndex(qid) < BANK_V3);
+            else if (key < DAILY_V7) all = all.filter(([qid]) => bankIndex(qid) < BANK_V4);
         } else {
             all = allQuestionIds();
             if (key < DAILY_V5) all = all.filter(([qid]) => bankIndex(qid) < BANK_V2);
             else if (key < DAILY_V6) all = all.filter(([qid]) => bankIndex(qid) < BANK_V3);
+            else if (key < DAILY_V7) all = all.filter(([qid]) => bankIndex(qid) < BANK_V4);
             seed = `daily:${content.lang}:${key}`;
         }
         const perCategory = new Map<Category, number>();
