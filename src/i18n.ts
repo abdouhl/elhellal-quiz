@@ -103,11 +103,13 @@ const ar = {
     daysInRow: (n: number) => `🔥 ${arDigits(String(n))} أيام متتالية`,
 
     homeTitle: "اختبار الهلال — أسئلة لا تنتهي بالعربية",
-    homeDesc: "اختبار عربي لا ينتهي: أسئلة ثقافة عامة وجغرافيا وعلوم وتاريخ وأدب وأعلام ومشاهير. كم إجابة صحيحة متتالية تستطيع؟",
+    homeDesc: "اختبار عربي لا ينتهي: آلاف أسئلة الثقافة العامة في الجغرافيا والعلوم والتاريخ والأدب والأعلام والمشاهير، مع الإجابات وتحدٍّ يومي. كم إجابة صحيحة متتالية تستطيع؟",
     dailyPageTitle: "تحدي اليوم — اختبار الهلال",
     dailyPageDesc: "١٠ أسئلة جديدة كل يوم، نفس الأسئلة لكل اللاعبين. أجب عنها، ثم شارك نتيجتك وتحدَّ أصدقاءك.",
 
-    pageTitle: (t: string) => `${t} — اختبار الهلال`,
+    // Question pages: framed as a quiz to take, not an answer to read — the page
+    // ranks for the question itself and the snippet already shows the answer.
+    pageTitle: (t: string) => `اختبار: ${t} اختبر معلوماتك`,
     showAnswer: "اعرض الإجابة",
     similar: "أسئلة مشابهة",
     allCategories: "جميع الأقسام",
@@ -249,7 +251,7 @@ const en: Strings = {
     dailyPageTitle: "Daily challenge — Elhellal Quiz",
     dailyPageDesc: "10 new questions every day, the same for every player. Answer them, share your score and challenge your friends.",
 
-    pageTitle: (t) => `${t} — Elhellal Quiz`,
+    pageTitle: (t) => `Quiz: ${t} Test yourself`,
     showAnswer: "Show the answer",
     similar: "Similar questions",
     allCategories: "All categories",
@@ -389,7 +391,7 @@ const es: Strings = {
     dailyPageTitle: "Reto diario — Elhellal Quiz",
     dailyPageDesc: "10 preguntas nuevas cada día, las mismas para todos. Respóndelas, comparte tu resultado y reta a tus amigos.",
 
-    pageTitle: (t) => `${t} — Elhellal Quiz`,
+    pageTitle: (t) => `Quiz: ${t} Pon a prueba tus conocimientos`,
     showAnswer: "Ver la respuesta",
     similar: "Preguntas similares",
     allCategories: "Todas las categorías",

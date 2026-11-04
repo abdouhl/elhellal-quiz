@@ -1,15 +1,12 @@
-// Renders a 1200×630 share image for every question (dist/og/<id>.png, and dist/og/<lang>/<id>.png for
-// languages other than Arabic) plus home.png and daily.png, so a link shared on WhatsApp/X/Facebook
-// previews the actual question. Runs after `astro build`.
+// Renders the 1200×630 share images home.png and daily.png per language (dist/og/, and dist/og/<lang>/ for
+// languages other than Arabic). Question pages use home.png: one image per question (~15k files) pushed a deploy
+// past Cloudflare's 20,000-files-per-version limit. Runs after `astro build`.
 // Run: bun scripts/build-og.ts
 import { Resvg } from "@resvg/resvg-js";
 import { decompress } from "wawoff2";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { availableParallelism } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { engines } from "../src/game/engines";
-import type { Question } from "../src/game/engine";
 import { LANGS, t } from "../src/i18n";
 import type { Lang } from "../src/i18n";
 
@@ -20,17 +17,14 @@ for (const lang of LANGS) mkdirSync(outDir(lang), { recursive: true });
 /** Text only the share images use. */
 const OG = {
     ar: {
-        cta: "هل تعرف الإجابة؟",
         home: ["اختبار لا ينتهي", "جغرافيا، علوم، تاريخ، أدب، أعلام، مشاهير، ومعالم. كم نقطة تستطيع أن تجمع؟", "أسئلة بالعربية"],
         daily: ["تحدي اليوم", "١٠ أسئلة جديدة كل يوم، نفس الأسئلة للجميع. هل تتفوق على أصدقائك؟", "كل يوم"],
     },
     en: {
-        cta: "Do you know the answer?",
         home: ["An endless quiz", "Geography, science, history, books, flags, famous faces and landmarks. How far can you go?", "Trivia"],
         daily: ["Daily challenge", "10 new questions every day, the same for everyone. Can you beat your friends?", "Every day"],
     },
     es: {
-        cta: "¿Sabes la respuesta?",
         home: ["Un quiz sin fin", "Geografía, ciencia, historia, libros, banderas, personajes famosos y monumentos. ¿Hasta dónde llegarás?", "Cultura general"],
         daily: ["Reto diario", "10 preguntas nuevas cada día, las mismas para todos. ¿Superarás a tus amigos?", "Cada día"],
     },
@@ -45,13 +39,11 @@ const fonts = {
     "plex-400": "node_modules/@ibm/plex-sans-arabic/fonts/complete/woff2/IBMPlexSansArabic-Regular.woff2",
     "plex-700": "node_modules/@ibm/plex-sans-arabic/fonts/complete/woff2/IBMPlexSansArabic-Bold.woff2",
 };
-// Batch workers (see the bottom of the file) reuse the TTFs the parent already wrote.
-const batch = process.env.OG_BATCH;
 // One at a time: decompress() returns a view into WASM memory that the next call overwrites.
 const fontFiles: string[] = [];
 for (const [name, woff2] of Object.entries(fonts)) {
     const file = path.join(fontDir, `${name}.ttf`);
-    if (!batch) writeFileSync(file, Buffer.from(await decompress(readFileSync(path.join(root, woff2)))));
+    writeFileSync(file, Buffer.from(await decompress(readFileSync(path.join(root, woff2)))));
     fontFiles.push(file);
 }
 const fontOptions = { fontFiles, loadSystemFonts: false, defaultFontFamily: FAMILY };
@@ -140,67 +132,6 @@ function frame(body: string, tag: string): string {
     </svg>`;
 }
 
-/** The question's picture, embedded, fitted into the box (portraits fill it, cropped toward the face). */
-function pictureSvg(q: Question, x: number, y: number, w: number, h: number): string {
-    const file = path.join(root, "public", q.image!);
-    const mime = file.endsWith(".png") ? "image/png" : "image/jpeg";
-    const href = `data:${mime};base64,${readFileSync(file).toString("base64")}`;
-    const fit = q.category === "face" ? "xMidYMin slice" : "xMidYMid meet";
-    if (q.category === "face") {
-        // A square, centred in the box, so the crop keeps the whole face.
-        x += (w - h) / 2;
-        w = h;
-    }
-    return `<clipPath id="pic"><rect x="${x}" y="${y}" width="${w}" height="${h}"/></clipPath>
-        <image x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="${fit}" clip-path="url(#pic)" href="${href}"/>`;
-}
-
-function questionSvg(q: Question): string {
-    let question: string;
-    if (q.image) {
-        // The picture on the reading side's end, the prompt beside it where reading starts.
-        const size = 54;
-        const lines = wrap(q.text, size, 520, 2, 700);
-        const lh = Math.round(size * 1.45);
-        question = pictureSvg(q, rtl() ? PAD : W - PAD - 540, 104, 540, 240) + textBlock(lines, startX(PAD), 240 - ((lines.length - 1) * lh) / 2, size, lh, COLORS.ink, startAnchor(), 700);
-    } else {
-        const text = q.isQuote ? t(lang).quoted(q.text) : q.text;
-        // A true-or-false claim gets its own accent line under the question.
-        const claim = q.claim ? [t(lang).quoted(q.claim) + (rtl() ? "\u200F" : "")] : [];
-        const size = text.length <= 50 ? 54 : text.length <= 100 ? 42 : 32;
-        const lines = wrap(text, size, W - 2 * PAD, 3 - claim.length, 700);
-        const lh = Math.round(size * 1.45);
-        const qTop = 150 + Math.round(((3 - lines.length - claim.length) * lh) / 2);
-        question =
-            textBlock(lines, W / 2, qTop, size, lh, COLORS.ink, "middle", 700) +
-            textBlock(claim, W / 2, qTop + lines.length * lh, size, lh, COLORS.accent, "middle", 700);
-    }
-
-    // 2×2 option tiles, first option where reading starts (top-right in Arabic); a guess-the-year question gets one wide tile.
-    const options = q.year ? [t(lang).labels.year] : q.options;
-    const gap = 20;
-    const cols = options.length === 1 ? 1 : 2;
-    const tileW = (W - 2 * PAD - (cols - 1) * gap) / cols;
-    const tileH = 84;
-    const top = 368;
-    const tiles = options
-        .map((o, i) => {
-            const col = i % cols;
-            const row = Math.floor(i / cols);
-            const x = rtl() ? W - PAD - (col + 1) * tileW - col * gap : PAD + col * (tileW + gap);
-            const y = top + row * (tileH + gap);
-            const oSize = 26;
-            const oLines = wrap(o, oSize, tileW - 32, 2);
-            const oLh = 34;
-            const baseline = y + tileH / 2 + oSize / 3 - ((oLines.length - 1) * oLh) / 2;
-            return `<rect x="${x}" y="${y}" width="${tileW}" height="${tileH}" fill="${COLORS.tile}" stroke="${COLORS.border}"/>` + textBlock(oLines, x + tileW / 2, baseline, oSize, oLh, COLORS.ink, "middle");
-        })
-        .join("");
-
-    const cta = `<text x="${startX(PAD)}" y="${H - 34}" font-size="28" font-weight="700" fill="${COLORS.accent}" text-anchor="${startAnchor()}" direction="${t(lang).dir}">${esc(OG[lang].cta)}</text>`;
-    return frame(question + tiles + cta, t(lang).labels[q.category]);
-}
-
 function posterSvg(title: string, subtitle: string, tag: string): string {
     const body =
         `<text x="${W / 2}" y="290" font-size="84" font-weight="700" fill="${COLORS.accent}" text-anchor="middle" direction="${t(lang).dir}">${esc(title)}</text>` +
@@ -211,35 +142,7 @@ function posterSvg(title: string, subtitle: string, tag: string): string {
 const render = (svg: string, name: string) =>
     writeFileSync(path.join(outDir(lang), `${name}.png`), new Resvg(svg, { font: fontOptions, fitTo: { mode: "width", value: W } }).render().asPng());
 
-const ids = Object.fromEntries(LANGS.map((l) => [l, engines[l].allQuestionIds().map(([id]) => id)])) as Record<Lang, string[]>;
-
-if (batch) {
-    // Worker: render one language's ids[start, end) and exit.
-    const [l, start, end] = batch.split(":");
-    lang = l as Lang;
-    for (const id of ids[lang].slice(+start, +end)) render(questionSvg(engines[lang].questionById(id)!), id);
-    process.exit(0);
-}
-
-// resvg's native image buffers (~3.5MB each) are never freed under Bun, so rendering every question in one
-// process runs the build machine out of memory. Render in short-lived child processes instead; each one's
-// memory goes back to the OS when it exits, and they run in parallel.
-const BATCH_SIZE = 150;
 const started = Date.now();
-const batches: string[] = [];
-for (const l of LANGS) for (let i = 0; i < ids[l].length; i += BATCH_SIZE) batches.push(`${l}:${i}:${Math.min(i + BATCH_SIZE, ids[l].length)}`);
-const total = LANGS.reduce((n, l) => n + ids[l].length, 0);
-let done = 0;
-async function runWorker() {
-    for (let b = batches.shift(); b; b = batches.shift()) {
-        const proc = Bun.spawn([process.execPath, fileURLToPath(import.meta.url)], { env: { ...process.env, OG_BATCH: b }, stdout: "inherit", stderr: "inherit" });
-        if ((await proc.exited) !== 0) throw new Error(`og: batch ${b} failed with exit code ${proc.exitCode}`);
-        const [, start, end] = b.split(":").map(Number);
-        done += end - start;
-        console.log(`og: ${done}/${total}`);
-    }
-}
-await Promise.all(Array.from({ length: Math.min(4, availableParallelism()) }, runWorker));
 for (const l of LANGS) {
     lang = l;
     const [homeTitle, homeText, homeTag] = OG[l].home;
@@ -247,4 +150,4 @@ for (const l of LANGS) {
     render(posterSvg(homeTitle, homeText, homeTag), "home");
     render(posterSvg(dailyTitle, dailyText, dailyTag), "daily");
 }
-console.log(`og: ${total + 2 * LANGS.length} images in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+console.log(`og: ${2 * LANGS.length} images in ${((Date.now() - started) / 1000).toFixed(1)}s`);

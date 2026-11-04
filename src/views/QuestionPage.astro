@@ -19,7 +19,7 @@ const more = related(lang, q);
     pageTitle={s.pageTitle(clip(title, 70))}
     pageDescription={seoDescription(lang, q)}
     canonicalUrl={`${SITE}${qPath(lang, id)}`}
-    ogImage={ogUrl(lang, id)}
+    ogImage={ogUrl(lang, "home")}
     alternates={questionAlternates(id)}
 >
     <script slot="head" type="application/ld+json" set:html={JSON.stringify(questionJsonLd(lang, q))} />

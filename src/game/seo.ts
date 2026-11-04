@@ -10,7 +10,7 @@ export const SITE = "https://quiz.elhellal.com";
 export const qPath = (lang: Lang, id: string) => `${base(lang)}/q/${id}/`;
 export const hubUrl = (lang: Lang, c: Category) => `${base(lang)}/c/${c}/`;
 export const homeUrl = (lang: Lang) => `${base(lang)}/`;
-/** Share image for a question, rendered by scripts/build-og.ts. */
+/** Share image (home or daily), rendered by scripts/build-og.ts. */
 export const ogUrl = (lang: Lang, name: string) => `${SITE}/og/${lang === "ar" ? "" : `${lang}/`}${name}.png`;
 export const hubTitle = (lang: Lang, c: Category) => t(lang).hubTitles[c];
 
