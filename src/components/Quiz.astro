@@ -101,7 +101,11 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
     /** Whether the current streak has beaten the previous best, which is when sharing it is offered. */
     let record = false;
     if (!store.get("quiz.adAt")) store.set("quiz.adAt", String(Date.now()));
-    const adDue = () => Date.now() - (Number(store.get("quiz.adAt")) || 0) >= AD_INTERVAL_MS;
+    // No vignette can show offline or inside the elhellal.com app's frame, so don't stop the game for one there.
+    const adDue = () =>
+        navigator.onLine &&
+        !document.documentElement.hasAttribute("data-embedded") &&
+        Date.now() - (Number(store.get("quiz.adAt")) || 0) >= AD_INTERVAL_MS;
     /** Set when the next question will open as its own page (a vignette opportunity). */
     let pageTurn = false;
     /** Ids answered correctly on any visit; they are not asked again until everything has been solved. */
@@ -234,7 +238,8 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
 
     /** Taps and keys after an answer: follow the "next" control if it is up, else skip the wait. */
     function proceed() {
-        if (!locked) return;
+        // A page turn can open a full-screen ad, so only an explicit tap on "next" may trigger it.
+        if (!locked || pageTurn) return;
         if (!el.next.hidden) el.next.click();
         else if (advanceTimer !== undefined) nextQuestion();
     }

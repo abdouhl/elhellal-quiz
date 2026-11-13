@@ -174,6 +174,8 @@ const DAILY_V5 = "2026-10-03";
 const DAILY_V6 = "2026-10-22";
 /** From this day on the daily sets (every language) also draw from the bank rows added after BANK_V4. */
 const DAILY_V7 = "2026-11-01";
+/** From this day on the daily sets (every language) also draw from the bank rows added after BANK_V5. */
+const DAILY_V8 = "2026-11-12";
 /** Bank rows at or past this index were added after DAILY_V2 went live; Arabic dailies before DAILY_V3 leave them out. */
 const BANK_V1 = 701;
 /** Bank rows at or past this index were added on 2026-10-01; dailies before DAILY_V5 leave them out. */
@@ -182,6 +184,8 @@ const BANK_V2 = 883;
 const BANK_V3 = 1169;
 /** Bank rows at or past this index were added on 2026-10-31; dailies before DAILY_V7 leave them out. */
 const BANK_V4 = 2269;
+/** Bank rows at or past this index were added on 2026-11-10 (two batches) and 2026-11-11 (b2319–b2558); dailies before DAILY_V8 leave them out. */
+const BANK_V5 = 2319;
 export const DAILY_SIZE = 10;
 
 /** `YYYY-MM-DD` for the player's local calendar day. */
@@ -420,11 +424,13 @@ export function createEngine(content: Content, s: Strings) {
             else if (key < DAILY_V5) all = all.filter(([qid]) => bankIndex(qid) < BANK_V2);
             else if (key < DAILY_V6) all = all.filter(([qid]) => bankIndex(qid) < BANK_V3);
             else if (key < DAILY_V7) all = all.filter(([qid]) => bankIndex(qid) < BANK_V4);
+            else if (key < DAILY_V8) all = all.filter(([qid]) => bankIndex(qid) < BANK_V5);
         } else {
             all = allQuestionIds();
             if (key < DAILY_V5) all = all.filter(([qid]) => bankIndex(qid) < BANK_V2);
             else if (key < DAILY_V6) all = all.filter(([qid]) => bankIndex(qid) < BANK_V3);
             else if (key < DAILY_V7) all = all.filter(([qid]) => bankIndex(qid) < BANK_V4);
+            else if (key < DAILY_V8) all = all.filter(([qid]) => bankIndex(qid) < BANK_V5);
             seed = `daily:${content.lang}:${key}`;
         }
         const perCategory = new Map<Category, number>();

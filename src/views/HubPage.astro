@@ -1,5 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import AdUnit from "../components/AdUnit.astro";
 import { CATEGORY_ICONS } from "../game/engine";
 import type { Category } from "../game/engine";
 import { engines } from "../game/engines";
@@ -56,5 +57,6 @@ const jsonLd = [
             {questions.map((q) => <li><a href={qPath(lang, q.id)}>{clip(seoTitle(lang, q), 110)}</a></li>)}
         </ul>
         <p class="qa-links"><a href={`${base(lang)}/c/`}>{s.allCategories}</a></p>
+        <AdUnit slot="1191851565" minHeight={250} mobileMinHeight={280} className="quiz-ad" />
     </main>
 </Layout>

@@ -1,5 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import AdUnit from "../components/AdUnit.astro";
 import { CATEGORY_ICONS } from "../game/engine";
 import { SITE, categories, categoryIds, homeUrl, hubUrl, ogUrl, pageAlternates } from "../game/seo";
 import { base, t } from "../i18n";
@@ -33,5 +34,6 @@ const total = cats.reduce((n, c) => n + categoryIds(lang, c).length, 0);
                 </li>
             ))}
         </ul>
+        <AdUnit slot="1191851565" minHeight={250} mobileMinHeight={280} className="quiz-ad" />
     </main>
 </Layout>

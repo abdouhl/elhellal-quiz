@@ -242,3 +242,4 @@ button:disabled { cursor: default; }
 .chip-due { border-color: var(--accent); color: var(--accent); animation: due-pulse 2.4s ease-in-out infinite; }
 @keyframes due-pulse { 50% { box-shadow: 0 0 0 3px rgb(255 140 0 / 0.25); } }
 @media (prefers-reduced-motion: reduce) { .chip-due { animation: none; } }
+.qa-ad { padding: 0 16px; }

@@ -2,6 +2,7 @@
 import { base, t } from "../i18n";
 import type { Lang } from "../i18n";
 import "../styles/quiz.css";
+import AdUnit from "./AdUnit.astro";
 
 export interface Props {
     lang: Lang;
@@ -48,6 +49,7 @@ const s = t(lang);
         <button type="button" id="r-share" class="next">{s.shareScore}</button>
         <p class="result-next">{s.nextIn} <span id="r-countdown"></span></p>
         <a class="brag" href={`${base(lang)}/`}>{s.keepPlaying}</a>
+        <AdUnit slot="3818014905" minHeight={250} mobileMinHeight={280} className="quiz-ad" />
     </section>
     <noscript><p class="noscript">{s.noscript}</p></noscript>
 </main>
