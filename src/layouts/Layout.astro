@@ -1,5 +1,6 @@
 ---
 import "@new-ui/foundations";
+import AdsLoader from "../components/AdsLoader.astro";
 import { DEFAULT_LANG, LANGS, base, t } from "../i18n";
 import type { Lang } from "../i18n";
 import { SITE } from "../game/seo";
@@ -83,11 +84,8 @@ const SPLASH: [number, number, number][] = [
         gtag("js", new Date());
         gtag("config", "G-MLVB12BM2C");
     </script>
-    <!-- Google AdSense (same publisher account as elhellal.com) -->
-    <script
-        async
-        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3610150616518651"
-        crossorigin="anonymous"></script>
+    <!-- Consent (Funding Choices) then AdSense, deferred until interaction or idle. -->
+    <AdsLoader />
 </head>
 <body>
     <a href="#main-content" class="skip-link">{s.skip}</a>

@@ -243,3 +243,11 @@ button:disabled { cursor: default; }
 @keyframes due-pulse { 50% { box-shadow: 0 0 0 3px rgb(255 140 0 / 0.25); } }
 @media (prefers-reduced-motion: reduce) { .chip-due { animation: none; } }
 .qa-ad { padding: 0 16px; }
+
+/* Phones: list/footer links were 15-22px tall, under the 24px minimum tap target. */
+@media (max-width: 48rem) {
+    .site-footer a {
+        display: inline-block;
+        padding-block: 5px;
+    }
+}
