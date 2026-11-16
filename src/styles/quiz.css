@@ -1,161 +1,376 @@
+/* The quiz's look, matched to the iOS app (../elhellal-quiz-ios, Hellal/UI): a night sky whose hue shifts
+   as the streak grows, a white question card, chunky glossy buttons that sink when pressed, rounded type. */
+@property --hue {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 223;
+}
 :root {
-    --page: var(--black);
-    --tile: var(--grey10);
-    --tile-hover: var(--grey9);
-    --tile-border: var(--grey8);
-    --chip: var(--grey10);
-    --accent: DarkOrange;
-    --accent-hover: #ffa333;
-    --ink: var(--grey1);
-    --ink-muted: var(--grey4);
-    --right: #2f9e6a;
-    --wrong: #c0453f;
+    /* Theme.swift / GameUI.swift colours */
+    --gold: #ffc73d;
+    --gold-base: #c79b30;
+    --right: #33cc78;
+    --wrong: #f5545c;
+    --game-green: #4dcc59;
+    --game-green-base: #389442;
+    --game-red: #f24d61;
+    --game-red-base: #ba3b4a;
+    --purple: #945cf5;
+    --purple-base: #7247bd;
+    --idle: #424f9e;
+    --idle-base: #2b3366;
+    --card-ink: #1f1f4d;
+    --glass: rgb(255 255 255 / 0.1);
+    --glass-strong: rgb(255 255 255 / 0.16);
+    --ink: #fff;
+    --ink-muted: rgb(255 255 255 / 0.65);
+    --accent: var(--gold);
+    --accent-hover: #ffd466;
+    --tile: var(--glass);
+    --tile-hover: var(--glass-strong);
+    --tile-border: rgb(255 255 255 / 0.16);
+    /* SF Rounded where the system has it (Apple), the site's own type for Arabic and elsewhere */
+    --game-font: ui-rounded, "SF Pro Rounded", var(--body-strong);
 }
 
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
 button:disabled { cursor: default; }
 
+/* The night sky (NightSky): Theme.background(level:), whose hue moves on with every level; stars twinkle above it. */
+html:has(.app, .hub) {
+    --hue: 223;
+    background: linear-gradient(hsl(var(--hue) 60% 20%), hsl(calc(var(--hue) + 29) 74% 8%)) fixed;
+    transition: --hue 0.8s ease-in-out;
+}
+html:has(.app, .hub) body { background: transparent; color: var(--ink); }
+html:has(.app, .hub) body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        radial-gradient(1.4px 1.4px at 12% 18%, #fff 50%, transparent 51%),
+        radial-gradient(1.1px 1.1px at 72% 9%, #fff 50%, transparent 51%),
+        radial-gradient(1.8px 1.8px at 38% 42%, #fff 50%, transparent 51%),
+        radial-gradient(1.2px 1.2px at 88% 33%, #fff 50%, transparent 51%),
+        radial-gradient(1.5px 1.5px at 22% 71%, #fff 50%, transparent 51%),
+        radial-gradient(1px 1px at 61% 64%, #fff 50%, transparent 51%),
+        radial-gradient(1.6px 1.6px at 93% 82%, #fff 50%, transparent 51%),
+        radial-gradient(1.1px 1.1px at 47% 91%, #fff 50%, transparent 51%),
+        radial-gradient(1.3px 1.3px at 5% 52%, #fff 50%, transparent 51%),
+        radial-gradient(1px 1px at 79% 55%, #fff 50%, transparent 51%);
+    background-size: 340px 420px;
+    opacity: 0.55;
+    animation: twinkle 4s ease-in-out infinite alternate;
+}
+html:has(.app, .hub) body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        radial-gradient(1.2px 1.2px at 30% 12%, #fff 50%, transparent 51%),
+        radial-gradient(1.6px 1.6px at 66% 28%, #fff 50%, transparent 51%),
+        radial-gradient(1px 1px at 14% 38%, #fff 50%, transparent 51%),
+        radial-gradient(1.4px 1.4px at 54% 78%, #fff 50%, transparent 51%),
+        radial-gradient(1.1px 1.1px at 84% 66%, #fff 50%, transparent 51%),
+        radial-gradient(1.5px 1.5px at 8% 88%, #fff 50%, transparent 51%);
+    background-size: 280px 360px;
+    opacity: 0.25;
+    animation: twinkle 3.1s ease-in-out 1.2s infinite alternate-reverse;
+}
+@keyframes twinkle { from { opacity: 0.2; } to { opacity: 0.7; } }
+html:has(.app, .hub) .site-footer a { color: var(--ink-muted); }
+
 .app {
     display: flex;
     flex-direction: column;
+    gap: 14px;
     box-sizing: border-box;
     min-height: calc(100svh - 48px);
-    max-width: 1000px;
+    max-width: 640px;
     margin: 0 auto;
-    padding: 20px 16px 0;
+    padding: 16px 16px 0;
+    font-family: var(--game-font);
 }
 
-/* Mode + score chips, pinned to the inline-end corner like the reference. */
-.topbar { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+/* Header: round glass chips (the app's Theme.card capsules). */
+.topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px; padding-top: 4px; }
 .topbar-end { display: flex; gap: 8px; margin-inline-start: auto; }
 .chip {
-    padding: 6px 12px;
-    border: 1px solid var(--tile-border);
-    border-radius: 2px;
-    background: var(--chip);
+    padding: 7px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--glass);
     color: var(--ink);
-    font-family: var(--body-strong);
+    font-family: var(--game-font);
     font-size: 1.05rem;
+    font-weight: 800;
     line-height: 1.4;
 }
-.chip-btn { cursor: pointer; text-decoration: none; }
-.chip-btn:hover { background: var(--tile-hover); border-color: var(--accent); }
-.chip-n { color: var(--accent); font-variant-numeric: tabular-nums; min-width: 2.2ch; text-align: center; }
+.chip-btn { cursor: pointer; text-decoration: none; transition: background 0.15s; }
+.chip-btn:hover { background: var(--glass-strong); }
+.chip-n { color: var(--gold); font-variant-numeric: tabular-nums; min-width: 2.2ch; text-align: center; }
 .chip.bump { animation: pop 0.35s ease; }
-/* Report: a quiet corner icon that only lights up on hover. */
-.chip-icon { border-color: transparent; background: none; color: var(--ink-muted); }
+/* Report: a round icon button, like the app's header buttons. */
+.chip-icon { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; color: var(--ink-muted); }
 .chip-icon:disabled { opacity: 0.4; }
+/* Daily challenge streak still to keep today */
+.chip-due { background: var(--gold); color: #000; animation: due-pulse 2.4s ease-in-out infinite; }
+@keyframes due-pulse { 50% { box-shadow: 0 0 0 4px rgb(255 199 61 / 0.3); } }
 
-.card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 0; text-align: center; }
-.card-in { animation: fade-up 0.3s ease both; }
-.q-cat { margin: 0 0 12px; font-size: 0.9rem; color: var(--ink-muted); }
+/* The question card (QuestionCard): white, rounded, on a lavender base. */
+.card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 6px;
+    padding: 22px 16px;
+    border-radius: 26px;
+    background: #fff;
+    box-shadow: 0 6px 0 #c7cceb;
+    color: var(--card-ink);
+    text-align: center;
+}
+.card-in { animation: card-in 0.4s cubic-bezier(0.3, 1.3, 0.6, 1) both; }
+@keyframes card-in { from { opacity: 0; transform: translateX(calc(var(--dir, 1) * 40px)); } to { opacity: 1; transform: none; } }
+[dir="rtl"] .card-in { --dir: -1; }
+.q-cat {
+    margin: 0;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--purple);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 900;
+}
+.q-cat:empty { display: none; }
 .q-text {
     margin: 0;
     max-width: 24em;
-    font-family: var(--body-copy);
-    font-weight: normal;
-    font-size: 2.6rem;
-    line-height: 1.6;
-    color: var(--ink);
+    font-family: var(--game-font);
+    font-weight: 800;
+    font-size: 1.75rem;
+    line-height: 1.5;
+    color: var(--card-ink);
     text-wrap: balance;
 }
-.q-text.is-quote { max-width: 30em; font-size: 1.7rem; line-height: 1.8; }
-.q-text.has-pic { font-size: 1.6rem; }
+.q-text.is-quote { max-width: 30em; font-size: 1.35rem; line-height: 1.7; }
+.q-text.has-pic { font-size: 1.4rem; }
 /* True or false: the proposed answer, under the question. */
-.q-claim { margin: 16px 0 0; font-family: var(--body-strong); font-size: 2.2rem; line-height: 1.4; color: var(--accent); }
+.q-claim { margin: 0; font-size: 1.6rem; font-weight: 900; line-height: 1.4; color: #e07a10; }
 
-.q-fig { margin: 0 0 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.q-fig { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .q-fig[hidden] { display: none; }
-.q-fig img { display: block; max-width: min(100%, 420px); max-height: 300px; object-fit: contain; background: var(--tile); }
-/* Flags keep their true shape (some aren't rectangles) but need an edge on a dark page. */
-.q-fig[data-kind="flag"] img { max-height: 200px; outline: 1px solid var(--tile-border); background: none; }
+.q-fig img { display: block; max-width: 100%; max-height: 220px; object-fit: contain; border-radius: 14px; box-shadow: 0 4px 12px rgb(0 0 0 / 0.25); }
+/* Flags keep their true shape (some aren't rectangles); no rounding or shadow on shaped flags. */
+.q-fig[data-kind="flag"] img { max-height: 180px; border-radius: 6px; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08); }
 /* Portraits: a steady square frame, cropped toward the face. */
-.q-fig[data-kind="face"] img { width: 260px; height: 260px; object-fit: cover; object-position: 50% 20%; }
-.q-fig figcaption { font-size: 0.7rem; line-height: 1.3; max-width: 420px; }
-.q-fig figcaption a { color: var(--ink-muted); text-decoration: none; direction: ltr; unicode-bidi: isolate; }
+.q-fig[data-kind="face"] img { width: 200px; height: 200px; object-fit: cover; object-position: 50% 20%; }
+.q-fig figcaption { font-size: 0.65rem; line-height: 1.3; max-width: 420px; }
+.q-fig figcaption a { color: #8a8aa8; text-decoration: none; direction: ltr; unicode-bidi: isolate; }
 .q-fig figcaption a:hover { text-decoration: underline; }
 
-.opts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 8px; }
+/* Answers (OptionButton): chunky indigo buttons with a letter badge, green or red once answered. */
+.opts { display: flex; flex-direction: column; gap: 10px; }
 .opt {
-    min-height: 140px;
-    padding: 16px 20px;
-    border: 1px solid var(--tile-border);
-    border-radius: 0;
-    background: var(--tile);
-    color: var(--ink);
-    font-family: var(--body-strong);
-    font-size: 2rem;
-    line-height: 1.4;
-    text-align: center;
+    --face: var(--idle);
+    --base: var(--idle-base);
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 64px;
+    margin-bottom: 5px;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 18px;
+    background: linear-gradient(color-mix(in srgb, var(--face), #fff 10%), var(--face));
+    box-shadow: 0 5px 0 var(--base);
+    color: #fff;
+    font-family: var(--game-font);
+    font-size: 1.2rem;
+    font-weight: 800;
+    line-height: 1.35;
+    text-align: start;
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    transition: transform 0.12s cubic-bezier(0.3, 1.6, 0.6, 1), box-shadow 0.12s cubic-bezier(0.3, 1.6, 0.6, 1), opacity 0.2s, filter 0.15s;
 }
-.opt:hover:not(:disabled) { background: var(--tile-hover); border-color: var(--accent); color: var(--accent); }
-.opt:disabled { color: var(--ink-muted); }
-.opt.right { background: var(--right); border-color: var(--right); color: #fff; }
-.opt.wrong { background: var(--wrong); border-color: var(--wrong); color: #fff; }
-.opt.right, .yp-val.right { animation: pop 0.35s ease; }
-.opt.wrong, .yp-val.wrong { animation: shake 0.4s ease; }
+/* the letter badge */
+.opt::before {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: rgb(255 255 255 / 0.9);
+    color: var(--base);
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1;
+}
+.opt:nth-child(1)::before { content: "A"; }
+.opt:nth-child(2)::before { content: "B"; }
+.opt:nth-child(3)::before { content: "C"; }
+.opt:nth-child(4)::before { content: "D"; }
+.opt:nth-child(5)::before { content: "E"; }
+:lang(ar) .opt:nth-child(1)::before { content: "أ"; }
+:lang(ar) .opt:nth-child(2)::before { content: "ب"; }
+:lang(ar) .opt:nth-child(3)::before { content: "ج"; }
+:lang(ar) .opt:nth-child(4)::before { content: "د"; }
+:lang(ar) .opt:nth-child(5)::before { content: "هـ"; }
+/* the mark once answered */
+.opt::after { margin-inline-start: auto; font-size: 1.4rem; font-weight: 900; line-height: 1; }
+.opt.right::after { content: "✓"; }
+.opt.wrong::after { content: "✕"; }
+.opt:hover:not(:disabled) { filter: brightness(1.1); }
+.opt:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 0 0 var(--base); }
+.opt:disabled { cursor: default; }
+.opt:disabled:not(.right, .wrong) { opacity: 0.45; }
+.opt.right { --face: var(--game-green); --base: var(--game-green-base); transform: scale(1.03); }
+.opt.wrong { --face: var(--game-red); --base: var(--game-red-base); }
+.opt.right { animation: pop 0.35s cubic-bezier(0.3, 1.6, 0.6, 1); }
+.opt.wrong { animation: shake 0.4s linear; }
+.yp-val.right { animation: pop 0.35s ease; }
+.yp-val.wrong { animation: shake 0.4s ease; }
 
-/* Guess the year: big year readout, a slider with ±1/±10 steps, and a confirm button. */
+/* Guess the year (YearPicker): a glass panel, big year, gold slider, confirm pill. */
 .opts-year { display: block; }
-.yp { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.yp-val { font-family: var(--body-strong); font-size: 3.2rem; line-height: 1.2; color: var(--accent); font-variant-numeric: tabular-nums; }
+.yp { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px; border-radius: 22px; background: var(--glass); }
+.yp-val { font-size: 3.2rem; font-weight: 900; line-height: 1.1; color: #fff; font-variant-numeric: tabular-nums; }
 .yp-val.right { color: var(--right); }
 .yp-val.wrong { color: var(--wrong); }
-.yp-row { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 640px; }
-.yp-range { flex: 1; min-width: 0; accent-color: var(--accent); height: 32px; }
+.yp-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+.yp-range { flex: 1; min-width: 0; accent-color: var(--gold); height: 32px; }
 .yp-step {
     flex: none;
-    min-width: 52px;
-    padding: 10px 8px;
-    border: 1px solid var(--tile-border);
-    background: var(--tile);
-    color: var(--ink);
+    min-width: 48px;
+    padding: 9px 6px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--glass);
+    color: #fff;
     cursor: pointer;
-    font-family: var(--body-strong);
+    font-weight: 800;
 }
-.yp-step:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.yp-go { padding: 12px 40px; font-size: 1.15rem; }
-.yp-go:disabled { opacity: 0.5; }
+.yp-step:hover:not(:disabled) { background: var(--glass-strong); }
+.yp-go { min-width: 200px; }
 .yp-note { margin: 0; font-size: 0.85rem; color: var(--ink-muted); }
 
-.foot { display: flex; align-items: center; justify-content: center; gap: 16px; min-height: 64px; margin-top: 8px; }
-.feedback { margin: 0; color: var(--ink); }
-.feedback.ok { color: #b8f0d4; }
-.feedback.bad { color: #ffd0d0; }
-.next {
-    flex: none;
-    padding: 8px 24px;
-    border: 0;
-    border-radius: 2px;
-    background: var(--accent);
-    color: var(--black);
+/* Lifelines paid for with a rewarded ad: small glass pills under the answers. */
+.lifelines { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; animation: fade-up 0.25s ease both; }
+.lifelines[hidden], .life[hidden] { display: none; }
+.life {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid rgb(255 255 255 / 0.25);
+    border-radius: 999px;
+    background: var(--glass);
+    color: #fff;
     cursor: pointer;
-    font-family: var(--body-strong);
-    text-decoration: none;
+    font-family: var(--game-font);
+    font-size: 0.9rem;
+    font-weight: 800;
 }
-.next:hover { background: var(--accent-hover); }
-.brag {
-    flex: none;
-    padding: 8px 16px;
-    border: 1px solid var(--accent);
-    border-radius: 2px;
-    background: transparent;
-    color: var(--accent);
-    cursor: pointer;
-    font-family: var(--body-strong);
-}
-.brag:hover { background: var(--tile-hover); }
-/* The facts behind the answer, and a bar that drains until the next question appears. */
-.reveal { min-height: 1.5em; max-width: 40em; margin: 0 auto 8px; text-align: center; font-size: 0.95rem; line-height: 1.6; color: var(--ink-muted); }
-.auto { width: min(240px, 60%); height: 2px; margin: 0 auto 12px; background: var(--tile-border); visibility: hidden; }
-.auto > span { display: block; height: 100%; background: var(--accent); transform-origin: right; }
+.life:hover:not(:disabled) { background: var(--glass-strong); }
+.life:disabled { opacity: 0.5; cursor: default; }
+/* answers taken away by 50:50 */
+.opt.gone { visibility: hidden; }
+.yp-val.narrowed:not(.right, .wrong) { color: var(--gold); }
+
+/* After an answer (the app's verdict panel): tinted green or red, holding the result, the facts and the buttons. */
+.verdict { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 4px 16px; border-radius: 20px; transition: background 0.2s; }
+.verdict:has(.feedback.ok) { background: rgb(51 204 120 / 0.18); padding-block: 14px; animation: fade-up 0.25s ease both; }
+.verdict:has(.feedback.bad) { background: rgb(245 84 92 / 0.18); padding-block: 14px; animation: fade-up 0.25s ease both; }
+.foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 14px; min-height: 48px; }
+.feedback { margin: 0; color: #fff; font-size: 1.1rem; font-weight: 800; }
+.feedback:empty { display: none; }
+.feedback.ok { color: #b8f5d2; }
+.feedback.bad { color: #ffd3d6; }
+.reveal { max-width: 40em; margin: 0; text-align: center; font-size: 0.95rem; font-weight: 600; line-height: 1.6; color: rgb(255 255 255 / 0.85); }
+.reveal:empty, .crowd:empty { display: none; }
+.crowd { margin: 0; text-align: center; font-size: 0.85rem; font-weight: 600; color: rgb(255 255 255 / 0.7); }
+/* A bar that drains until the next question appears. */
+.auto { width: min(240px, 60%); height: 6px; margin: 0 auto; border-radius: 999px; background: var(--glass); overflow: hidden; visibility: hidden; }
+.auto > span { display: block; height: 100%; border-radius: inherit; background: var(--gold); transform-origin: right; }
 [dir="ltr"] .auto > span { transform-origin: left; }
 .auto.on { visibility: visible; }
 .auto.on > span { animation: drain var(--ms, 1.5s) linear both; }
-.crowd { min-height: 1.5em; margin: 0 0 8px; text-align: center; font-size: 0.95rem; color: var(--accent); }
+
+/* Buttons (ChunkyButtonStyle / PillButtonStyle): a raised, glossy face on a darker base it sinks into. */
+.chunky, .next, .brag, .hub-play {
+    --face: var(--gold);
+    --base: var(--gold-base);
+    --ink-on: #000;
+    --depth: 6px;
+    --radius: 22px;
+    position: relative;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: var(--depth);
+    padding: 13px 24px;
+    border: 0;
+    border-radius: var(--radius);
+    background: linear-gradient(color-mix(in srgb, var(--face), #fff 12%), var(--face));
+    box-shadow: 0 var(--depth) 0 var(--base);
+    color: var(--ink-on);
+    cursor: pointer;
+    font-family: var(--game-font);
+    font-size: 1.15rem;
+    font-weight: 800;
+    line-height: 1.3;
+    text-decoration: none;
+    transition: transform 0.12s cubic-bezier(0.3, 1.6, 0.6, 1), box-shadow 0.12s cubic-bezier(0.3, 1.6, 0.6, 1), filter 0.15s;
+}
+/* the gloss along the top edge */
+:is(.chunky, .next, .brag, .hub-play)::before {
+    content: "";
+    position: absolute;
+    inset: 5px 12px auto;
+    height: 6px;
+    border-radius: calc(var(--radius) - 6px);
+    background: rgb(255 255 255 / 0.28);
+    pointer-events: none;
+}
+:is(.chunky, .next, .brag, .hub-play):hover:not(:disabled) { filter: brightness(1.06); }
+:is(.chunky, .next, .brag, .hub-play):active:not(:disabled) { transform: translateY(var(--depth)); box-shadow: 0 0 0 var(--base); }
+:is(.chunky, .next, .brag):disabled { opacity: 0.5; }
+/* "Tap to continue": the app's white pill */
+.foot .next { --face: #fff; --base: #c7c7c7; }
+/* Share the record: purple, smaller */
+.brag { --face: var(--purple); --base: var(--purple-base); --ink-on: #fff; --depth: 4px; --radius: 16px; padding: 10px 16px; font-size: 1rem; }
+.chunky { animation: fade-up 0.25s ease both; }
+.chunky-green { --face: var(--right); --base: #1f8a50; --ink-on: #fff; }
+.chunky-cyan { --face: #64d2ff; --base: #2f8fb8; --ink-on: #000; }
+/* the endless quiz's "win back 🔥N": its own full-width row, like the iOS result screen */
+.foot > .chunky { order: 3; flex: 1 0 100%; max-width: 420px; }
+.chunky-sm { --depth: 4px; --radius: 14px; padding: 9px 16px; font-size: 1rem; }
+
+/* A lost daily streak that an ad can win back, in the app's purple daily card. */
+.rescue {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, var(--purple), #6b34d6);
+    box-shadow: 0 6px 14px rgb(148 92 245 / 0.35);
+    color: #fff;
+    animation: fade-up 0.25s ease both;
+}
+.rescue p { flex: 1; margin: 0; font-size: 0.95rem; font-weight: 800; line-height: 1.5; }
+
 .toast {
     position: fixed;
     inset-inline: 16px;
@@ -163,85 +378,103 @@ button:disabled { cursor: default; }
     z-index: 20;
     max-width: 360px;
     margin: 0 auto;
-    padding: 10px 16px;
-    border: 1px solid var(--tile-border);
-    border-radius: 2px;
-    background: var(--tile);
-    color: var(--ink);
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: rgb(30 30 60 / 0.75);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    color: #fff;
+    font-family: var(--game-font);
+    font-weight: 700;
     text-align: center;
     animation: fade-up 0.2s ease both;
 }
+
 /* Daily challenge */
 .play { display: contents; }
-.result { gap: 12px; }
-.result .q-cat { margin: 0; }
-.result-score { margin: 0; font-family: var(--body-strong); font-size: 4rem; line-height: 1.2; color: var(--accent); }
-.result-grid { margin: 0; font-size: 1.8rem; letter-spacing: 2px; line-height: 1.4; }
-.result-verdict { margin: 0; font-size: 1.4rem; color: var(--ink); }
-.result-streak { margin: 0; color: var(--accent); }
+/* One capsule per question: green, red, or still to play (dailyProgress). */
+.dbar { display: flex; gap: 6px; }
+.dbar > span { flex: 1; height: 6px; border-radius: 999px; background: var(--glass); transition: background 0.2s; }
+.dbar > .hit { background: var(--right); }
+.dbar > .miss { background: var(--wrong); }
+/* The result (ResultView) sits on the sky, not on the white card. */
+.card.result { gap: 14px; padding: 24px 0; background: none; box-shadow: none; color: #fff; }
+.result .q-cat { background: none; padding: 0; font-size: 1.25rem; font-weight: 700; opacity: 0.7; }
+.result-score { margin: 0; font-size: 5rem; font-weight: 900; line-height: 1.1; color: var(--gold); font-variant-numeric: tabular-nums; }
+.result-grid { display: flex; gap: 6px; margin: 0; }
+.result-grid > span { width: 24px; height: 24px; border-radius: 5px; background: var(--wrong); }
+.result-grid > .hit { background: var(--right); }
+.result-verdict { margin: 0; font-size: 1.5rem; font-weight: 700; color: #fff; }
+.result-streak { margin: 0; font-size: 1.15rem; color: #fff; }
 .result-streak:empty { display: none; }
-.result .next { margin-top: 8px; padding: 12px 32px; font-size: 1.15rem; }
-.result-next { margin: 8px 0 0; font-size: 0.9rem; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
-.result .brag { text-decoration: none; }
+.result .next { margin-top: 8px; min-width: min(100%, 320px); }
+.result-next { margin: 4px 0 0; font-size: 0.9rem; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.result .brag { --face: #fff; --base: #c7c7c7; --ink-on: var(--card-ink); --depth: 6px; --radius: 22px; padding: 13px 24px; font-size: 1.1rem; min-width: min(100%, 320px); }
 
-.hint { margin: 0 0 12px; text-align: center; font-size: 0.8rem; color: var(--ink-muted); }
+.hint { margin: 0 0 12px; text-align: center; font-size: 0.8rem; color: rgb(255 255 255 / 0.5); }
 /* Keyboard tips mean nothing on touch screens. */
 @media (hover: none) { .hint { display: none; } }
 .noscript { text-align: center; color: var(--ink); }
 
-:is(.chip-btn, .opt, .next, .brag, .yp-step, .yp-range):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(.chip-btn, .opt, .next, .brag, .chunky, .yp-step, .yp-range, .hub-play):focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
 
-@keyframes pop { 50% { transform: scale(1.05); } }
-@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+@keyframes pop { 50% { transform: scale(1.06); } }
+@keyframes shake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
 @keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    .chip-due { animation: none; }
 }
+
 /* /q/<id>: the answer (collapsed) and links to more questions, below the game. */
-.qa { max-width: 1000px; margin: 24px auto 0; padding: 0 16px; }
-.qa-answer { background: var(--tile); border: 1px solid var(--tile-border); padding: 14px 18px; }
-.qa-answer summary { cursor: pointer; color: var(--accent); font-family: var(--body-strong); }
+.qa { max-width: 640px; margin: 24px auto 0; padding: 0 16px; font-family: var(--game-font); }
+.qa-answer { padding: 14px 18px; border-radius: 18px; background: var(--glass); }
+.qa-answer summary { cursor: pointer; color: var(--gold); font-weight: 800; }
 .qa-answer p { margin: 10px 0 0; }
 .qa-reveal { color: var(--ink-muted); }
 .qa-more h2, .hub h1 { font-size: 1.3rem; margin: 28px 0 12px; }
 .qa-more ul, .hub ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.qa-more a, .hub li a { display: block; padding: 12px 16px; background: var(--tile); border: 1px solid var(--tile-border); color: var(--ink); text-decoration: none; line-height: 1.6; }
-.qa-more a:hover, .hub li a:hover { border-color: var(--accent); color: var(--accent); }
+.qa-more a, .hub li a {
+    display: block;
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: var(--glass);
+    color: #fff;
+    font-weight: 600;
+    line-height: 1.6;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+.qa-more a:hover, .hub li a:hover { background: var(--glass-strong); }
 .qa-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
 .qa-links a { flex: 1; text-align: center; }
 
 /* /c/ and /c/<category>: question lists by category. */
-.hub { max-width: 1000px; margin: 0 auto; padding: 20px 16px 0; }
+.hub { max-width: 1000px; margin: 0 auto; padding: 20px 16px 0; font-family: var(--game-font); }
 .hub-intro { color: var(--ink-muted); margin: 0 0 16px; }
-.hub-play { display: inline-block; margin: 0 0 20px; padding: 12px 28px; background: var(--accent); color: #000; text-decoration: none; font-family: var(--body-strong); }
-.hub-play:hover { background: var(--accent-hover); }
+.hub-play { margin: 0 0 26px; }
 .hub-cats { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .hub-count { color: var(--ink-muted); font-size: 0.9rem; }
 
 .site-footer { display: flex; justify-content: center; gap: 20px; }
 
 @media (max-width: 640px) {
-    .chip { padding: 5px 9px; font-size: 0.9rem; }
-    .foot { flex-wrap: wrap; }
-    .q-text { font-size: 1.7rem; }
-    .q-text.is-quote { font-size: 1.3rem; }
-    .q-text.has-pic { font-size: 1.3rem; }
-    .card:has(.q-fig:not([hidden])) { padding: 12px 0; }
-    .q-fig { margin-bottom: 10px; }
-    .q-fig img { max-height: 30vh; }
-    .q-fig[data-kind="flag"] img { max-height: 22vh; }
-    .q-fig[data-kind="face"] img { width: 30vh; height: 30vh; max-width: 70vw; max-height: 70vw; }
-    .opts { grid-template-columns: 1fr; gap: 12px; }
-    .opt { min-height: 72px; font-size: 1.35rem; }
-    .q-claim { font-size: 1.6rem; }
+    .app { gap: 12px; padding-top: 12px; }
+    .chip { padding: 6px 11px; font-size: 0.95rem; }
+    .q-text { font-size: 1.4rem; }
+    .q-text.is-quote { font-size: 1.15rem; }
+    .q-text.has-pic { font-size: 1.2rem; }
+    .card { padding: 18px 14px; gap: 12px; }
+    .q-fig img { max-height: 26vh; }
+    .q-fig[data-kind="flag"] img { max-height: 20vh; }
+    .q-fig[data-kind="face"] img { width: 26vh; height: 26vh; max-width: 60vw; max-height: 60vw; }
+    .opt { min-height: 58px; font-size: 1.1rem; }
+    .q-claim { font-size: 1.35rem; }
     .yp-val { font-size: 2.6rem; }
-    .yp-step { min-width: 44px; padding: 10px 4px; }
+    .yp-step { min-width: 42px; }
+    .result-score { font-size: 4.2rem; }
 }
-/* Daily challenge streak still to keep today */
-.chip-due { border-color: var(--accent); color: var(--accent); animation: due-pulse 2.4s ease-in-out infinite; }
-@keyframes due-pulse { 50% { box-shadow: 0 0 0 3px rgb(255 140 0 / 0.25); } }
-@media (prefers-reduced-motion: reduce) { .chip-due { animation: none; } }
 .qa-ad { padding: 0 16px; }
 
 /* Phones: list/footer links were 15-22px tall, under the 24px minimum tap target. */

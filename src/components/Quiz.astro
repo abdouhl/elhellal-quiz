@@ -49,12 +49,22 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
         }
     </div>
 
+    <!-- Lifelines, each paid for with a rewarded ad: only shown once Google has one ready. -->
+    <div id="lifelines" class="lifelines" role="group" aria-label={s.lifelines} hidden>
+        <button type="button" class="life" data-life="fifty"><span aria-hidden="true">▶ ½</span> {s.fifty}</button>
+        <button type="button" class="life" data-life="narrow"><span aria-hidden="true">▶ 📅</span> {s.narrowYears}</button>
+        <button type="button" class="life" data-life="skip"><span aria-hidden="true">▶ ⏭</span> {s.skipQ}</button>
+    </div>
+
+    <div class="verdict">
     <div class="foot">
         <p id="feedback" class="feedback" role="status"></p>
         <button type="button" id="brag" class="brag" hidden>{s.brag}</button>
+        <button type="button" id="revive" class="chunky chunky-green" hidden><span aria-hidden="true">▶</span> <span></span></button>
         <a id="next" class="next" href={`${base(lang)}/`} hidden>{s.next}</a>
     </div>
     <p id="reveal" class="reveal"></p>
+    </div>
     <div id="auto" class="auto" aria-hidden="true"><span></span></div>
 
     <p class="hint">{s.hint}</p>
@@ -64,13 +74,16 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
 <script>
     import { CATEGORY_ICONS } from "../game/engine";
     import type { Question } from "../game/engine";
+    import { adShowing, adsOn, interstitial, offerReward, withdrawReward } from "../game/ads";
     import { SITE, countAnswer, dailyStatus, fetchRates, haptic, home, keepAwake, loadEngine, markMissed, missedIds, num, proudMoment, recordAnswer, renderAnswers, reportQuestion, s, savedPictures, settleYear, shareCard, showClaim, showPicture, store, syncBadge, toast } from "../game/client";
 
     const { createDeck, questionById } = await loadEngine();
 
-    // At most one vignette opportunity per minute: once this much time has passed, the next question
-    // is opened as a real page load via a link click, which is what lets AdSense show a vignette ad.
+    // At most one full-screen ad break a minute (H5 Games Ads, see src/game/ads.ts): once this much time
+    // has passed, the game waits for a tap on "next" instead of moving on by itself, and that tap asks for an ad.
     const AD_INTERVAL_MS = 60_000;
+    /** A lost streak this long can be won back once by watching a rewarded ad. */
+    const REVIVE_MIN = 3;
     /** How long a result stays up before the next question appears on its own; facts add reading time. */
     const SHOW_RIGHT_MS = 1200;
     const SHOW_WRONG_MS = 2600;
@@ -91,9 +104,16 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
         auto: $("auto"),
         next: $<HTMLAnchorElement>("next"),
         brag: $("brag"),
+        revive: $<HTMLButtonElement>("revive"),
         dstreak: $("dstreak"),
         review: $<HTMLAnchorElement>("review"),
+        lifelines: $("lifelines"),
     };
+
+    /** Lifelines (rewarded ads): offered from this streak on, each once per run (a run ends with a wrong answer). */
+    const LIFELINE_MIN = 2;
+    type Life = "fifty" | "narrow" | "skip";
+    const used = new Set<Life>();
 
     // The streak carries across pages, so a visitor arriving from a pin keeps it when they continue.
     let streak = Number(store.get("quiz.streak")) || 0;
@@ -101,13 +121,14 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
     /** Whether the current streak has beaten the previous best, which is when sharing it is offered. */
     let record = false;
     if (!store.get("quiz.adAt")) store.set("quiz.adAt", String(Date.now()));
-    // No vignette can show offline or inside the elhellal.com app's frame, so don't stop the game for one there.
-    const adDue = () =>
-        navigator.onLine &&
-        !document.documentElement.hasAttribute("data-embedded") &&
-        Date.now() - (Number(store.get("quiz.adAt")) || 0) >= AD_INTERVAL_MS;
-    /** Set when the next question will open as its own page (a vignette opportunity). */
-    let pageTurn = false;
+    // No ad can show offline, behind a blocker or inside the elhellal.com app's frame: don't stop the game for one there.
+    const adDue = () => adsOn() && Date.now() - (Number(store.get("quiz.adAt")) || 0) >= AD_INTERVAL_MS;
+    /** Set when the tap on "next" will ask for an ad break. */
+    let adBreakNext = false;
+    /** The current streak was won back with an ad; losing it again ends the run for good (one revive per run, as on iOS). */
+    let revived = false;
+    /** Whether the lost streak had beaten the previous best, restored along with it. */
+    let lostRecord = false;
     /** Ids answered correctly on any visit; they are not asked again until everything has been solved. */
     const solved = new Set<string>();
     try {
@@ -157,6 +178,9 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
     let lostStreak = 0;
 
     function renderStats(bump = false) {
+        // The sky shifts hue every 5 in a row, like the app's background moving on with each level.
+        const level = Math.floor(streak / 5);
+        document.documentElement.style.setProperty("--hue", String((223 + level * 32.4) % 360));
         el.streak.textContent = `🔥 ${num(streak)}`;
         el.best.textContent = `★ ${num(best)}`;
         if (bump) replay(el.streak, "bump");
@@ -200,9 +224,76 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
         el.next.hidden = true;
         el.next.href = home;
         el.brag.hidden = true;
+        el.revive.hidden = true;
+        withdrawReward();
         el.report.disabled = false;
-        pageTurn = false;
+        adBreakNext = false;
         replay(el.card, "card-in");
+        offerLifelines(q);
+    }
+
+    /** The lifelines that make sense for `q` and are still unused this run. */
+    function lifelinesFor(q: Question): Life[] {
+        const all: Life[] = q.year ? ["narrow", "skip"] : q.options.length >= 4 ? ["fifty", "skip"] : ["skip"];
+        return all.filter((l) => !used.has(l));
+    }
+
+    /** Asks for a rewarded ad and, once one is ready, shows the lifelines it would pay for. */
+    function offerLifelines(q: Question) {
+        el.lifelines.hidden = true;
+        const open = lifelinesFor(q);
+        if (streak < LIFELINE_MIN || !open.length || !adsOn()) return;
+        offerReward("lifeline", (watch) => {
+            if (question !== q || locked) return;
+            for (const b of el.lifelines.querySelectorAll<HTMLButtonElement>(".life")) {
+                const life = b.dataset.life as Life;
+                b.hidden = !open.includes(life);
+                b.disabled = false;
+                b.onclick = async () => {
+                    el.lifelines.querySelectorAll<HTMLButtonElement>(".life").forEach((x) => (x.disabled = true));
+                    const earned = await watch();
+                    // An ad just played (or was skipped): no interstitial on top of it this minute.
+                    store.set("quiz.adAt", String(Date.now()));
+                    if (question !== q || locked) return;
+                    if (!earned) return offerLifelines(q);
+                    used.add(life);
+                    useLifeline(life, q);
+                };
+            }
+            el.lifelines.hidden = false;
+        });
+    }
+
+    function useLifeline(life: Life, q: Question) {
+        if (life === "skip") {
+            // Not scored: the streak stays, and in practice mode the question waits at the end of the round.
+            if (reviewing) reviewQueue.push(q.id);
+            toast(s.skipped);
+            return nextQuestion();
+        }
+        if (life === "fifty") {
+            const wrong = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")].filter((b) => Number(b.dataset.i) !== q.answer);
+            wrong.sort(() => Math.random() - 0.5);
+            for (const b of wrong.slice(0, wrong.length - 1)) {
+                b.disabled = true;
+                b.classList.add("gone");
+            }
+        } else if (life === "narrow" && q.year) {
+            // A window a few tolerances wide that holds the answer, at a random offset, inside the picker's range.
+            const { answer, min, max, tolerance } = q.year;
+            const span = Math.max(20, tolerance * 3);
+            let lo = Math.round((answer - Math.random() * span) / 5) * 5;
+            lo = Math.max(min, Math.min(lo, max - span));
+            const range = el.opts.querySelector<HTMLInputElement>(".yp-range");
+            if (range) {
+                range.min = String(lo);
+                range.max = String(lo + span);
+                range.value = String(lo + span / 2);
+                range.dispatchEvent(new Event("input"));
+                el.opts.querySelector(".yp-val")?.classList.add("narrowed");
+            }
+        }
+        offerLifelines(q);
     }
 
     function nextQuestion() {
@@ -226,20 +317,17 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
         advanceTimer = window.setTimeout(nextQuestion, ms);
     }
 
-    /** Shows the "next" control and waits for it; when an ad is due it links to the next question's own page. */
+    /** Shows the "next" control and waits for it; when an ad is due, that tap asks for an ad break. */
     function showNext() {
-        if (adDue()) {
-            pageTurn = true;
-            el.next.href = `${home}q/${upcoming!.id}/${reviewing ? "?review" : ""}`;
-        }
+        adBreakNext = adDue();
         el.next.hidden = false;
         el.next.focus();
     }
 
     /** Taps and keys after an answer: follow the "next" control if it is up, else skip the wait. */
     function proceed() {
-        // A page turn can open a full-screen ad, so only an explicit tap on "next" may trigger it.
-        if (!locked || pageTurn) return;
+        // An ad break may open a full-screen ad, so only an explicit tap on "next" may trigger it.
+        if (!locked || adBreakNext || adShowing) return;
         if (!el.next.hidden) el.next.click();
         else if (advanceTimer !== undefined) nextQuestion();
     }
@@ -266,6 +354,8 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
         if (locked || !question) return;
         locked = true;
         const q = question;
+        el.lifelines.hidden = true;
+        withdrawReward();
         recordAnswer(q.id, ok);
         countAnswer();
         markMissed(q.id, ok);
@@ -288,6 +378,7 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
             else deck.retry(q.id);
             lostStreak = streak;
             streak = 0;
+            used.clear();
         }
         store.set("quiz.streak", String(streak));
         renderStats(ok);
@@ -300,19 +391,56 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
 
         // A broken record is worth sharing: wait for the player instead of moving on.
         const brag = !ok && record && lostStreak >= 3;
-        if (!ok) record = false;
+        if (!ok) {
+            lostRecord = record;
+            record = false;
+        }
         el.brag.hidden = !brag;
-        if (brag || adDue()) showNext();
+        // A long streak lost: offer to win it back with a rewarded ad (only shown if Google has one ready).
+        const revive = !ok && !revived && lostStreak >= REVIVE_MIN && adsOn();
+        if (!ok) revived = false;
+        if (revive) offerRevive(q);
+        if (brag || revive || adDue()) showNext();
         else autoAdvance((ok ? SHOW_RIGHT_MS : SHOW_WRONG_MS) + (q.reveal ? SHOW_REVEAL_MS : 0));
     }
 
-    el.next.addEventListener("click", (e) => {
-        if (pageTurn) {
-            // Let the browser follow the link so AdSense can interpose a vignette.
-            store.set("quiz.adAt", String(Date.now()));
-            return;
-        }
+    /** Shows the "win back 🔥N" button once a rewarded ad is ready for this wrong answer. */
+    function offerRevive(q: Question) {
+        const n = lostStreak;
+        offerReward("keep-streak", (watch) => {
+            if (question !== q || !locked) return;
+            el.revive.lastElementChild!.textContent = s.reviveStreak(n);
+            el.revive.hidden = false;
+            el.revive.disabled = false;
+            el.revive.onclick = async () => {
+                el.revive.disabled = true;
+                const earned = await watch();
+                if (!earned || question !== q) {
+                    el.revive.hidden = true;
+                    return;
+                }
+                streak = n;
+                revived = true;
+                record = lostRecord;
+                store.set("quiz.streak", String(streak));
+                // An ad just played: count it as this minute's break.
+                store.set("quiz.adAt", String(Date.now()));
+                toast(s.streakBack(n));
+                nextQuestion();
+                renderStats(true);
+            };
+        });
+    }
+
+    el.next.addEventListener("click", async (e) => {
         e.preventDefault();
+        if (adShowing) return;
+        if (adBreakNext) {
+            adBreakNext = false;
+            store.set("quiz.adAt", String(Date.now()));
+            el.next.hidden = true;
+            await interstitial("next-question");
+        }
         nextQuestion();
     });
     el.brag.addEventListener("click", () =>
@@ -334,7 +462,7 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
         if (!(e.target as HTMLElement).closest("button, a, input")) proceed();
     });
     document.addEventListener("keydown", (e) => {
-        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.ctrlKey || e.metaKey || e.altKey || adShowing) return;
         const idx = e.key.length === 1 ? Math.max("1234".indexOf(e.key), "١٢٣٤".indexOf(e.key)) : -1;
         if (idx >= 0) {
             const b = el.opts.children[idx] as HTMLButtonElement | undefined;

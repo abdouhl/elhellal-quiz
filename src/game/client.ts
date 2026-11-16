@@ -302,6 +302,29 @@ export function dailyStatus(): { streak: number; doneToday: boolean } {
     return { streak: alive ? Number(store.get(`${DAILY_KEY}.streak`)) || 0 : 0, doneToday };
 }
 
+/** A day key `n` days before today. */
+const daysAgo = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return dayKey(d);
+};
+
+/**
+ * A daily streak of 3+ broken by exactly one missed day (last played the day before yesterday) can be
+ * won back by watching a rewarded ad, as in the iOS app. Its length, or 0 when there is none.
+ */
+export function restorableDailyStreak(): number {
+    const old = Number(store.get(`${DAILY_KEY}.streak`)) || 0;
+    return store.get(`${DAILY_KEY}.last`) === daysAgo(2) && old >= 3 ? old : 0;
+}
+
+/** Covers the missed day, so today's challenge carries the streak on. */
+export function restoreDailyStreak() {
+    if (!restorableDailyStreak()) return;
+    store.set(`${DAILY_KEY}.last`, daysAgo(1));
+    syncBadge();
+}
+
 /**
  * A dot on the installed app's icon while today's challenge is unplayed, and the same for the service
  * worker, which re-checks in the background (see public/sw.js) so the dot appears on a new day too.

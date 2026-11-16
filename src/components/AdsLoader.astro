@@ -9,6 +9,10 @@
 // Flags on <html>: data-no-ads on noindex pages (low-value for AdSense, slots hidden),
 // data-ads-blocked when the script fails (blocker), which collapses the reserved boxes.
 // Pages framed by the elhellal.com app (data-embedded) load no ads at all.
+//
+// H5 Games Ads (AdSense beta, Ad Placement API): window.adBreak / adConfig are defined up front so
+// the game can call them any time; calls queue on adsbygoogle until the script arrives. The game's
+// ad rules live in src/game/ads.ts. ?adtest (kept for the session) or localhost serves test ads.
 ---
 
 <script is:inline>
@@ -25,6 +29,17 @@
             return;
         }
         if (root.hasAttribute("data-embedded")) return;
+        window.adsbygoogle = window.adsbygoogle || [];
+        window.adBreak = window.adConfig = function (o) {
+            window.adsbygoogle.push(o);
+        };
+        var test = false;
+        try {
+            if (/[?&]adtest\b/.test(location.search)) sessionStorage.setItem("adtest", "1");
+            test = sessionStorage.getItem("adtest") === "1" || /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+        } catch (e) {}
+        // Preload so an ad is ready the moment the player taps "next"; the quiz has no audio of its own.
+        window.adConfig({ preloadAdBreaks: "on", sound: "on" });
         // Tells Funding Choices the page is ready for its message.
         (function signal() {
             if (window.frames["googlefcPresent"]) return;
@@ -35,10 +50,11 @@
             document.body.appendChild(f);
         })();
         var started = false;
-        function inject(src, crossOrigin, done) {
+        function inject(src, crossOrigin, done, attrs) {
             var s = document.createElement("script");
             s.async = true;
             s.src = src;
+            for (var k in attrs || {}) s.setAttribute(k, attrs[k]);
             if (crossOrigin) s.crossOrigin = "anonymous";
             if (done) s.onload = s.onerror = done;
             document.head.appendChild(s);
@@ -52,7 +68,11 @@
                         window.__elhellalAdsBlocked = true;
                         root.setAttribute("data-ads-blocked", "");
                     }
-                });
+                }, Object.assign(
+                    // Google's own cap between interstitials; src/game/ads.ts adds the quiz's rules on top.
+                    { "data-ad-client": "ca-pub-3610150616518651", "data-ad-frequency-hint": "60s" },
+                    test ? { "data-adbreak-test": "on" } : {}
+                ));
             });
         }
         start();

@@ -155,6 +155,16 @@ const ar = {
     dailyStreakDue: "العب تحدي اليوم لتحافظ على سلسلتك",
     cardStreak: "إجابات صحيحة متتالية",
     cardCta: "هل تتفوق عليّ؟",
+    watchAd: "شاهد الإعلان",
+    streakLost: (n: number) => `انقطعت سلسلتك (${arDigits(String(n))} أيام). شاهد إعلانًا قصيرًا لاستعادتها.`,
+    reviveStreak: (n: number) => `شاهد إعلانًا واستعد 🔥 ${arDigits(String(n))}`,
+    streakBack: (n: number) => `عادت سلسلتك 🔥 ${arDigits(String(n))}`,
+    dailyBack: (n: number) => `عادت سلسلتك 📅 ${arDigits(String(n))} — العب تحدي اليوم لتحافظ عليها`,
+    lifelines: "مساعدة مقابل إعلان",
+    fifty: "حذف إجابتين",
+    skipQ: "تخطَّ السؤال",
+    narrowYears: "ضيّق السنوات",
+    skipped: "تخطّيت السؤال، وسلسلتك محفوظة",
 };
 
 export type Strings = typeof ar;
@@ -297,6 +307,16 @@ const en: Strings = {
     dailyStreakDue: "Play today's challenge to keep your streak",
     cardStreak: "correct answers in a row",
     cardCta: "Can you beat me?",
+    watchAd: "Watch ad",
+    streakLost: (n: number) => `Your ${n}-day streak broke. Watch a short ad to win it back.`,
+    reviveStreak: (n: number) => `Watch an ad: win back 🔥 ${n}`,
+    streakBack: (n: number) => `Your streak is back 🔥 ${n}`,
+    dailyBack: (n: number) => `Your streak is back 📅 ${n} — play today's challenge to keep it`,
+    lifelines: "Help for an ad",
+    fifty: "50:50",
+    skipQ: "Skip",
+    narrowYears: "Narrow years",
+    skipped: "Question skipped, streak kept",
 };
 
 const es: Strings = {
@@ -437,6 +457,16 @@ const es: Strings = {
     dailyStreakDue: "Juega el reto de hoy para mantener tu racha",
     cardStreak: "aciertos seguidos",
     cardCta: "¿Me superas?",
+    watchAd: "Ver anuncio",
+    streakLost: (n: number) => `Tu racha de ${n} días se rompió. Mira un anuncio corto para recuperarla.`,
+    reviveStreak: (n: number) => `Mira un anuncio y recupera 🔥 ${n}`,
+    streakBack: (n: number) => `Tu racha ha vuelto 🔥 ${n}`,
+    dailyBack: (n: number) => `Tu racha ha vuelto 📅 ${n}: juega el reto de hoy para mantenerla`,
+    lifelines: "Ayuda por un anuncio",
+    fifty: "50:50",
+    skipQ: "Saltar",
+    narrowYears: "Acotar años",
+    skipped: "Pregunta saltada, racha intacta",
 };
 
 export const STRINGS: Record<Lang, Strings> = { ar, en, es };

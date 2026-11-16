@@ -21,6 +21,13 @@ const s = t(lang);
         </span>
     </div>
 
+    <div id="d-bar" class="dbar" aria-hidden="true"></div>
+
+    <div id="rescue" class="rescue" hidden>
+        <p id="rescue-text"></p>
+        <button type="button" id="rescue-go" class="chunky chunky-cyan chunky-sm">{s.watchAd}</button>
+    </div>
+
     <div id="play" class="play">
         <section id="card" class="card">
             <p id="q-cat" class="q-cat"></p>
@@ -32,11 +39,13 @@ const s = t(lang);
             <p id="q-claim" class="q-claim" hidden></p>
         </section>
         <div id="opts" class="opts" role="group" aria-label={s.options}></div>
-        <div class="foot">
-            <p id="feedback" class="feedback" role="status"></p>
-            <button type="button" id="next" class="next" hidden>{s.next}</button>
+        <div class="verdict">
+            <div class="foot">
+                <p id="feedback" class="feedback" role="status"></p>
+                <button type="button" id="next" class="next" hidden>{s.next}</button>
+            </div>
+            <p id="crowd" class="crowd"></p>
         </div>
-        <p id="crowd" class="crowd"></p>
         <p class="hint">{s.dailyHint}</p>
     </div>
 
@@ -57,7 +66,8 @@ const s = t(lang);
 <script>
     import { CATEGORY_ICONS, DAILY_SIZE, dayKey, dayNumber } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { DAILY_KEY as KEY, SITE, countAnswer, crowdLine, haptic, home, keepAwake, loadEngine, markMissed, num, proudMoment, recordAnswer, renderAnswers, s, settleYear, shareCard, showClaim, showPicture, store, syncBadge } from "../game/client";
+    import { offerReward } from "../game/ads";
+    import { DAILY_KEY as KEY, SITE, countAnswer, crowdLine, haptic, home, keepAwake, loadEngine, markMissed, num, proudMoment, recordAnswer, renderAnswers, restorableDailyStreak, restoreDailyStreak, s, settleYear, shareCard, showClaim, showPicture, store, syncBadge, toast } from "../game/client";
 
     const { dailyIds, questionById } = await loadEngine();
 
@@ -88,6 +98,10 @@ const s = t(lang);
         rStreak: $("r-streak"),
         rShare: $("r-share"),
         rCountdown: $("r-countdown"),
+        rescue: $("rescue"),
+        bar: $("d-bar"),
+        rescueText: $("rescue-text"),
+        rescueGo: $<HTMLButtonElement>("rescue-go"),
     };
 
     const today = dayKey();
@@ -108,6 +122,13 @@ const s = t(lang);
     let advanceTimer: number | undefined;
 
     function renderProgress() {
+        el.bar.replaceChildren(
+            ...Array.from({ length: DAILY_SIZE }, (_, i) => {
+                const seg = document.createElement("span");
+                if (i < state.hits.length) seg.className = state.hits[i] ? "hit" : "miss";
+                return seg;
+            }),
+        );
         el.num.textContent = title;
         el.prog.textContent = `${num(Math.min(state.hits.length + (locked ? 0 : 1), DAILY_SIZE))}/${num(DAILY_SIZE)}`;
     }
@@ -192,6 +213,7 @@ const s = t(lang);
 
     /** Updates the consecutive-days streak, once, when the day's last question is answered. */
     function finishDay() {
+        el.rescue.hidden = true;
         const d = new Date();
         d.setDate(d.getDate() - 1);
         const streak = store.get(`${KEY}.last`) === dayKey(d) ? (Number(store.get(`${KEY}.streak`)) || 0) + 1 : 1;
@@ -222,7 +244,16 @@ const s = t(lang);
         el.prog.textContent = `${num(score)}/${num(DAILY_SIZE)}`;
         el.rTitle.textContent = title;
         el.rScore.textContent = `${num(score)}/${num(DAILY_SIZE)}`;
-        el.rGrid.textContent = grid;
+        // Squares on screen; the emoji grid is kept for sharing.
+        el.rGrid.replaceChildren(
+            ...state.hits.map((h) => {
+                const sq = document.createElement("span");
+                if (h) sq.className = "hit";
+                return sq;
+            }),
+        );
+        el.rGrid.setAttribute("aria-label", grid);
+        el.bar.hidden = true;
         el.rVerdict.textContent = verdict(score);
         el.rStreak.textContent = streakLine;
         el.rShare.onclick = () =>
@@ -244,6 +275,23 @@ const s = t(lang);
         const pad = (n: number) => num(n).padStart(2, num(0));
         el.rCountdown.textContent = `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
     }
+
+    // A streak broken by one missed day: offer to win it back with a rewarded ad (no other ads during the challenge).
+    const lost = restorableDailyStreak();
+    if (lost && state.hits.length < state.ids.length)
+        offerReward("daily-streak", (watch) => {
+            if (el.result.hidden === false) return;
+            el.rescueText.textContent = s.streakLost(lost);
+            el.rescue.hidden = false;
+            el.rescueGo.onclick = async () => {
+                el.rescueGo.disabled = true;
+                const earned = await watch();
+                el.rescue.hidden = true;
+                if (!earned) return;
+                restoreDailyStreak();
+                toast(s.dailyBack(lost));
+            };
+        });
 
     el.next.addEventListener("click", advance);
     el.opts.addEventListener("click", (e) => {
