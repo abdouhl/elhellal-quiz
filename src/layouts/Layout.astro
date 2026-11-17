@@ -84,7 +84,7 @@ const SPLASH: [number, number, number][] = [
         gtag("js", new Date());
         gtag("config", "G-MLVB12BM2C");
     </script>
-    <!-- Consent (Funding Choices) then AdSense, deferred until interaction or idle. -->
+    <!-- Consent (Funding Choices) then the H5 Games Ads script (interstitial and rewarded breaks only). -->
     <AdsLoader />
 </head>
 <body>
@@ -287,46 +287,10 @@ const SPLASH: [number, number, number][] = [
                 .catch(() => {});
         })();
     </script>
-    <!-- Manual ad units (AdUnit.astro): each is requested only when it nears the viewport.
-         adsbygoogle.push({}) fills the first unprocessed <ins> in document order, so push
-         once for every unrequested slot up to the visible one. A slot inside a hidden
-         container (the daily result before the game ends) never intersects, so it waits.
-         Not inside the elhellal.com app frame. -->
-    <script is:inline>
-        (function () {
-            if (document.documentElement.hasAttribute("data-embedded")) return;
-            var slots = document.querySelectorAll("ins.adsbygoogle[data-ad-slot]");
-            if (!slots.length) return;
-            var requestUpTo = function (target) {
-                var all = Array.prototype.slice.call(document.querySelectorAll("ins.adsbygoogle[data-ad-slot]"));
-                for (var i = 0; i <= all.indexOf(target); i++) {
-                    var ins = all[i];
-                    if (ins.dataset.adRequested || ins.getAttribute("data-adsbygoogle-status") || !ins.offsetParent) continue;
-                    ins.dataset.adRequested = "1";
-                    try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) {}
-                }
-            };
-            if (!("IntersectionObserver" in window)) return slots.forEach(requestUpTo);
-            var io = new IntersectionObserver(function (entries) {
-                entries.forEach(function (e) {
-                    if (!e.isIntersecting) return;
-                    io.unobserve(e.target);
-                    requestUpTo(e.target);
-                });
-            }, { rootMargin: "300px 0px" });
-            slots.forEach(function (ins) { io.observe(ins); });
-        })();
-    </script>
 </body>
 </html>
 
 <style is:global>
-    html[data-embedded] .ad-unit { display: none; }
-    .quiz-ad { width: 100%; max-width: 728px; margin: 40px auto; }
-    /* Lift bottom-fixed UI above an AdSense anchor ad so neither covers the other. */
-    html:has(ins.adsbygoogle[data-anchor-status="displayed"]) :is(.install-cta, .toast) {
-        bottom: calc(112px + env(safe-area-inset-bottom));
-    }
     @font-face {
         font-family: "ROM-Regular";
         src: url("/woffs/ROM-Regular.woff2") format("woff2");

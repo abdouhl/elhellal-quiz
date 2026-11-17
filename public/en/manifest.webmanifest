@@ -61,7 +61,7 @@
     },
     {
       "name": "Endless quiz",
-      "url": "/en/",
+      "url": "/en/play/",
       "icons": [
         {
           "src": "/icon-192.png",
@@ -72,7 +72,7 @@
     },
     {
       "name": "Practice mistakes",
-      "url": "/en/?review",
+      "url": "/en/play/?review",
       "icons": [
         {
           "src": "/icon-192.png",

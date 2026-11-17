@@ -1,8 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import AdUnit from "../components/AdUnit.astro";
 import { CATEGORY_ICONS } from "../game/engine";
-import { SITE, categories, categoryIds, homeUrl, hubUrl, ogUrl, pageAlternates } from "../game/seo";
+import { SITE, categories, categoryIds, hubUrl, ogUrl, pageAlternates } from "../game/seo";
 import { base, t } from "../i18n";
 import type { Lang } from "../i18n";
 import "../styles/quiz.css";
@@ -24,7 +23,7 @@ const total = cats.reduce((n, c) => n + categoryIds(lang, c).length, 0);
     <main id="main-content" class="hub">
         <h1>{s.allH1}</h1>
         <p class="hub-intro">{s.allIntro(total, cats.length)}</p>
-        <a class="hub-play" href={homeUrl(lang)}>{s.startQuiz}</a>
+        <a class="hub-play" href={`${base(lang)}/play/`}>{s.startQuiz}</a>
         <ul class="hub-cats">
             {cats.map((c) => (
                 <li>
@@ -34,6 +33,5 @@ const total = cats.reduce((n, c) => n + categoryIds(lang, c).length, 0);
                 </li>
             ))}
         </ul>
-        <AdUnit slot="1191851565" minHeight={250} mobileMinHeight={280} className="quiz-ad" />
     </main>
 </Layout>

@@ -6,9 +6,12 @@
 // sites get short visits, and waiting for a scroll or 3s of idle lost the ads of
 // visitors who left early. adsbygoogle.push({}) calls made before then just queue.
 //
-// Flags on <html>: data-no-ads on noindex pages (low-value for AdSense, slots hidden),
-// data-ads-blocked when the script fails (blocker), which collapses the reserved boxes.
-// Pages framed by the elhellal.com app (data-embedded) load no ads at all.
+// Only H5 Games Ads run here: no display slots and no Auto ads (anchor, vignette, in-page). Auto ads
+// are switched on or off per site in the AdSense dashboard, so keep them OFF for quiz.elhellal.com there.
+//
+// Flags on <html>: data-no-ads on noindex pages, data-ads-blocked when the script fails (blocker);
+// src/game/ads.ts asks for no ad break while either is set. Pages framed by the elhellal.com app
+// (data-embedded) load no ads at all.
 //
 // H5 Games Ads (AdSense beta, Ad Placement API): window.adBreak / adConfig are defined up front so
 // the game can call them any time; calls queue on adsbygoogle until the script arrives. The game's
@@ -78,13 +81,3 @@
         start();
     })();
 </script>
-
-<style is:global>
-    html[data-no-ads] .ad-unit,
-    html[data-no-ads] .adsense-slot,
-    html[data-ads-blocked] .ad-unit,
-    html[data-ads-blocked] .adsense-slot,
-    html[data-embedded] .ad-unit {
-        display: none !important;
-    }
-</style>

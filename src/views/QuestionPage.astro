@@ -1,7 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import Quiz from "../components/Quiz.astro";
-import AdUnit from "../components/AdUnit.astro";
 import { CATEGORY_ICONS } from "../game/engine";
 import { engines } from "../game/engines";
 import { SITE, qPath, answerText, clip, hubTitle, hubUrl, ogUrl, questionAlternates, questionJsonLd, related, seoDescription, seoTitle } from "../game/seo";
@@ -45,8 +44,4 @@ const more = related(lang, q);
             </p>
         </nav>
     </section>
-    <!-- Wrapped: as a bare top-level child of Layout the component rendered nothing. -->
-    <div class="qa-ad">
-        <AdUnit slot="7058596774" minHeight={250} mobileMinHeight={280} className="quiz-ad" />
-    </div>
 </Layout>

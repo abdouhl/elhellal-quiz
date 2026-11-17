@@ -1,0 +1,23 @@
+---
+// The game itself (endless, a category, mistake practice, blitz or survival, picked by the URL's query),
+// opened from the home hub. One page for every mode, so it is indexed as the home page.
+import Layout from "../layouts/Layout.astro";
+import Quiz from "../components/Quiz.astro";
+import { SITE, homeUrl, ogUrl, pageAlternates } from "../game/seo";
+import { base, t } from "../i18n";
+import type { Lang } from "../i18n";
+
+const { lang } = Astro.props as { lang: Lang };
+const s = t(lang);
+---
+
+<Layout
+    lang={lang}
+    pageTitle={s.playTitle}
+    pageDescription={s.homeDesc}
+    canonicalUrl={`${SITE}${homeUrl(lang)}`}
+    ogImage={ogUrl(lang, "home")}
+    alternates={pageAlternates((l) => `${base(l)}/play/`)}
+>
+    <Quiz lang={lang} />
+</Layout>

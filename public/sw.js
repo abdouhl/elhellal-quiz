@@ -9,7 +9,7 @@ const PICS = "pics-v1";
 /** Small bits of state pages hand over for background work (the last daily challenge played). */
 const META = "meta-v1";
 const LANGS = ["en", "es"];
-const PRECACHE = ["/", "/manifest.webmanifest", ...LANGS.flatMap((l) => [`/${l}/`, `/${l}/manifest.webmanifest`]), "/favicon.svg", "/icon-192.png"];
+const PRECACHE = ["/", "/play/", "/manifest.webmanifest", ...LANGS.flatMap((l) => [`/${l}/`, `/${l}/play/`, `/${l}/manifest.webmanifest`]), "/favicon.svg", "/icon-192.png"];
 /** The offline fallback: the home page of the language the request is in. */
 const homeOf = (path) => {
     const lang = LANGS.find((l) => path.startsWith(`/${l}/`));
@@ -44,7 +44,7 @@ self.addEventListener("fetch", (event) => {
                     }
                     return res;
                 })
-                .catch(async () => (await caches.match(req)) || (await caches.match(homeOf(url.pathname)))),
+                .catch(async () => (await caches.match(req, { ignoreSearch: true })) || (await caches.match(homeOf(url.pathname)))),
         );
         return;
     }
