@@ -105,7 +105,7 @@ const ar = {
     homeTitle: "اختبار الهلال — أسئلة لا تنتهي بالعربية",
     homeDesc: "اختبار عربي لا ينتهي: آلاف أسئلة الثقافة العامة في الجغرافيا والعلوم والتاريخ والأدب والأعلام والمشاهير، مع الإجابات وتحدٍّ يومي. كم إجابة صحيحة متتالية تستطيع؟",
     dailyPageTitle: "تحدي اليوم — اختبار الهلال",
-    dailyPageDesc: "١٠ أسئلة جديدة كل يوم، نفس الأسئلة لكل اللاعبين. أجب عنها، ثم شارك نتيجتك وتحدَّ أصدقاءك.",
+    dailyPageDesc: "تحدي الهلال اليومي: ١٠ أسئلة جديدة كل يوم في الجغرافيا والعلوم والتاريخ والأدب واللغة، نفس الأسئلة لكل اللاعبين. أجب عنها، ثم شارك نتيجتك وتحدَّ أصدقاءك.",
 
     // Question pages: framed as a quiz to take, not an answer to read — the page
     // ranks for the question itself and the snippet already shows the answer.
@@ -298,7 +298,7 @@ const en: Strings = {
     homeTitle: "Elhellal Quiz — endless trivia questions",
     homeDesc: "An endless trivia quiz: geography, science, history, books, flags, famous faces and landmarks. How many can you get right in a row?",
     dailyPageTitle: "Daily challenge — Elhellal Quiz",
-    dailyPageDesc: "10 new questions every day, the same for every player. Answer them, share your score and challenge your friends.",
+    dailyPageDesc: "The daily quiz: 10 new questions every day on geography, science, history and literature, the same for every player. Share your score and challenge your friends.",
 
     pageTitle: (t) => `Quiz: ${t} Test yourself`,
     showAnswer: "Show the answer",
@@ -486,7 +486,7 @@ const es: Strings = {
     homeTitle: "Elhellal Quiz — preguntas de cultura general sin fin",
     homeDesc: "Un quiz de cultura general sin fin: geografía, ciencia, historia, libros, banderas, personajes famosos y monumentos. ¿Cuántas aciertas seguidas?",
     dailyPageTitle: "Reto diario — Elhellal Quiz",
-    dailyPageDesc: "10 preguntas nuevas cada día, las mismas para todos. Respóndelas, comparte tu resultado y reta a tus amigos.",
+    dailyPageDesc: "El reto diario: 10 preguntas nuevas cada día de geografía, ciencia, historia y literatura, las mismas para todos. Comparte tu resultado y reta a tus amigos.",
 
     pageTitle: (t) => `Quiz: ${t} Pon a prueba tus conocimientos`,
     showAnswer: "Ver la respuesta",
