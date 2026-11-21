@@ -178,6 +178,8 @@ const DAILY_V7 = "2026-11-01";
 const DAILY_V8 = "2026-11-12";
 /** From this day on the daily sets (every language) also draw from the bank rows added after BANK_V6. */
 const DAILY_V9 = "2026-11-19";
+/** From this day on the daily sets (every language) also draw from the bank rows added after BANK_V7. */
+const DAILY_V10 = "2026-11-21";
 /** Bank rows at or past this index were added after DAILY_V2 went live; Arabic dailies before DAILY_V3 leave them out. */
 const BANK_V1 = 701;
 /** Bank rows at or past this index were added on 2026-10-01; dailies before DAILY_V5 leave them out. */
@@ -190,6 +192,8 @@ const BANK_V4 = 2269;
 const BANK_V5 = 2319;
 /** Bank rows at or past this index were added on 2026-11-18 (b2559–b2758); dailies before DAILY_V9 leave them out. */
 const BANK_V6 = 2559;
+/** Bank rows at or past this index were added on 2026-11-20 (b2759–b2778); dailies before DAILY_V10 leave them out. */
+const BANK_V7 = 2759;
 export const DAILY_SIZE = 10;
 
 /** `YYYY-MM-DD` for the player's local calendar day. */
@@ -430,6 +434,7 @@ export function createEngine(content: Content, s: Strings) {
             else if (key < DAILY_V7) all = all.filter(([qid]) => bankIndex(qid) < BANK_V4);
             else if (key < DAILY_V8) all = all.filter(([qid]) => bankIndex(qid) < BANK_V5);
             else if (key < DAILY_V9) all = all.filter(([qid]) => bankIndex(qid) < BANK_V6);
+            else if (key < DAILY_V10) all = all.filter(([qid]) => bankIndex(qid) < BANK_V7);
         } else {
             all = allQuestionIds();
             if (key < DAILY_V5) all = all.filter(([qid]) => bankIndex(qid) < BANK_V2);
@@ -437,6 +442,7 @@ export function createEngine(content: Content, s: Strings) {
             else if (key < DAILY_V7) all = all.filter(([qid]) => bankIndex(qid) < BANK_V4);
             else if (key < DAILY_V8) all = all.filter(([qid]) => bankIndex(qid) < BANK_V5);
             else if (key < DAILY_V9) all = all.filter(([qid]) => bankIndex(qid) < BANK_V6);
+            else if (key < DAILY_V10) all = all.filter(([qid]) => bankIndex(qid) < BANK_V7);
             seed = `daily:${content.lang}:${key}`;
         }
         const perCategory = new Map<Category, number>();
