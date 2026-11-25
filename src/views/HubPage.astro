@@ -1,5 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import DisplayAd from "../components/DisplayAd.astro";
 import { CATEGORY_ICONS } from "../game/engine";
 import type { Category } from "../game/engine";
 import { engines } from "../game/engines";
@@ -10,6 +11,9 @@ import "../styles/quiz.css";
 
 const { lang, category } = Astro.props as { lang: Lang; category: Category };
 const s = t(lang);
+/** A native ad after every this many questions in the list, at most AD_MAX of them. */
+const AD_EVERY = 25;
+const AD_MAX = 4;
 const questions = categoryIds(lang, category).map((id) => engines[lang].questionById(id)!);
 const label = s.labels[category];
 const title = hubTitle(lang, category);
@@ -53,8 +57,22 @@ const jsonLd = [
         <p class="hub-intro">{s.hubIntro(questions.length, label)}</p>
         <a class="hub-play" href={`${base(lang)}/play/?cat=${category}`}>{s.playQuiz}</a>
         <ul>
-            {questions.map((q) => <li><a href={qPath(lang, q.id)}>{clip(seoTitle(lang, q), 110)}</a></li>)}
+            {
+                questions.map((q, i) => (
+                    <>
+                        {i > 0 && i % AD_EVERY === 0 && i / AD_EVERY <= AD_MAX && (
+                            <li class="ad-row">
+                                <DisplayAd lang={lang} kind="in-article" />
+                            </li>
+                        )}
+                        <li>
+                            <a href={qPath(lang, q.id)}>{clip(seoTitle(lang, q), 110)}</a>
+                        </li>
+                    </>
+                ))
+            }
         </ul>
         <p class="qa-links"><a href={`${base(lang)}/c/`}>{s.allCategories}</a></p>
+        <DisplayAd lang={lang} />
     </main>
 </Layout>

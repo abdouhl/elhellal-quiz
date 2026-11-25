@@ -1,6 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import Quiz from "../components/Quiz.astro";
+import DisplayAd from "../components/DisplayAd.astro";
 import { CATEGORY_ICONS } from "../game/engine";
 import { engines } from "../game/engines";
 import { SITE, qPath, answerText, clip, hubTitle, hubUrl, ogUrl, questionAlternates, questionJsonLd, related, seoDescription, seoTitle } from "../game/seo";
@@ -44,4 +45,7 @@ const more = related(lang, q);
             </p>
         </nav>
     </section>
+
+    <!-- Below the game and the answer, never between them (outside #qa, which the game hides as it moves on). -->
+    <DisplayAd lang={lang} />
 </Layout>

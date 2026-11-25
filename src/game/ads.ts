@@ -4,6 +4,9 @@
 // - a full-screen ad now and then between questions, only after a tap on "next", never by itself
 //   and never during the daily challenge.
 // window.adBreak is defined by AdsLoader.astro; it is missing in the elhellal.com app frame.
+// Every break's outcome is sent to GA4 (src/game/track.ts) as "ad_break".
+
+import { track } from "./track";
 
 interface Placement {
     type: "start" | "pause" | "next" | "browse" | "reward";
@@ -34,6 +37,30 @@ export function adsOn(): boolean {
         !root.hasAttribute("data-ads-blocked")
     );
 }
+
+/** At most one full-screen ad break a minute, counted across pages (rewarded ads count too). */
+export const AD_INTERVAL_MS = 60_000;
+const AD_AT = "quiz.adAt";
+/** Kept in memory as well, for browsers that block storage. */
+let lastAt = 0;
+const lastBreak = () => {
+    try {
+        return Number(localStorage.getItem(AD_AT)) || 0;
+    } catch {
+        return lastAt;
+    }
+};
+/** Notes that an ad break was just asked for (or a rewarded ad played), restarting the minute. */
+export function noteBreak() {
+    lastAt = Date.now();
+    try {
+        localStorage.setItem(AD_AT, String(lastAt));
+    } catch {}
+}
+// A first visit gets its first minute without an interstitial.
+if (!lastBreak()) noteBreak();
+/** Whether an interstitial may be asked for now. */
+export const breakDue = () => adsOn() && Date.now() - lastBreak() >= AD_INTERVAL_MS;
 
 /** Set while an ad covers the page, so the game can hold its timers and ignore keys. */
 export let adShowing = false;
@@ -72,8 +99,27 @@ export function interstitial(name: string): Promise<void> {
                 covering(true);
             },
             afterAd: () => covering(false),
-            adBreakDone: finish,
+            adBreakDone: (info) => {
+                track("ad_break", { ad_type: "next", ad_name: name, ad_status: info?.breakStatus ?? "unknown" });
+                finish();
+            },
         });
+    });
+}
+
+/**
+ * Makes `link` a natural break: when an interstitial is due, a tap on it asks for one first, then follows
+ * the link. Otherwise the link works as usual (and always does with a modifier key, for a new tab).
+ */
+export function breakBefore(link: HTMLAnchorElement, name: string, when: () => boolean = () => true) {
+    link.addEventListener("click", async (e) => {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (adShowing) return e.preventDefault();
+        if (!when() || !breakDue()) return;
+        e.preventDefault();
+        noteBreak();
+        await interstitial(name);
+        location.href = link.href;
     });
 }
 
@@ -101,10 +147,12 @@ function ask(mine: number, name: string, onReady: (watch: () => Promise<boolean>
         beforeReward: (showAdFn) => {
             if (mine !== generation) return;
             offered = true;
+            track("reward_offered", { ad_name: name });
             onReady(
                 () =>
                     new Promise<boolean>((resolve) => {
                         settle = resolve;
+                        track("reward_clicked", { ad_name: name });
                         showAdFn();
                     }),
             );
@@ -116,8 +164,11 @@ function ask(mine: number, name: string, onReady: (watch: () => Promise<boolean>
         adBreakDone: (info) => {
             if (adShowing) covering(false);
             settle(viewed);
-            if (!offered && info.breakStatus === "notReady" && tries < RETRIES)
-                setTimeout(() => mine === generation && adsOn() && ask(mine, name, onReady, tries + 1), RETRY_MS);
+            const retry = !offered && info.breakStatus === "notReady" && tries < RETRIES;
+            // One event per offer: the retries' "notReady" answers aren't counted, only the last one.
+            if (!retry && (offered || mine === generation))
+                track("ad_break", { ad_type: "reward", ad_name: name, ad_status: offered ? (viewed ? "viewed" : "dismissed") : info.breakStatus });
+            if (retry) setTimeout(() => mine === generation && adsOn() && ask(mine, name, onReady, tries + 1), RETRY_MS);
         },
     });
 }

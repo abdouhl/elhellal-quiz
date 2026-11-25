@@ -1,6 +1,6 @@
 import type { Lang, Strings } from "../i18n";
 
-export type Category = "geo" | "sci" | "hist" | "gen" | "lang" | "lit" | "quote" | "flag" | "face" | "place" | "tf" | "first" | "more" | "year";
+export type Category = "geo" | "sci" | "hist" | "gen" | "lang" | "lit" | "quote" | "flag" | "face" | "place" | "tf" | "first" | "more" | "year" | "order" | "typed";
 export type CategoryFilter = Category | "all";
 
 export interface Question {
@@ -22,6 +22,10 @@ export interface Question {
     reveal?: string;
     /** guess-the-year questions (no options): the answer, the picker's range, and the accepted error */
     year?: { answer: number; min: number; max: number; tolerance: number };
+    /** put-in-order questions (no options): the items as shown, and their indexes from first to last */
+    order?: { items: string[]; solution: number[]; labels: string[] };
+    /** type-the-answer questions (no options): the answer as shown, and the spellings accepted (before fuzzy matching) */
+    typed?: { answer: string; accepted: string[] };
 }
 
 export const CATEGORY_ICONS: Record<Category, string> = {
@@ -39,6 +43,8 @@ export const CATEGORY_ICONS: Record<Category, string> = {
     first: "⏳",
     more: "📏",
     year: "📅",
+    order: "🔢",
+    typed: "⌨️",
 };
 const CATEGORY_ORDER = Object.keys(CATEGORY_ICONS) as Category[];
 
@@ -76,12 +82,55 @@ type Source =
     | { kind: "tf"; i: number }
     | { kind: "year"; i: number }
     | { kind: "first"; a: number; b: number }
-    | { kind: "more"; m: number; a: number; b: number };
+    | { kind: "more"; m: number; a: number; b: number }
+    | { kind: "order"; i: number }
+    | { kind: "typed"; i: number };
 
-const SRC_PREFIX = { bank: "b", quote: "q", "book-author": "ba", "author-book": "ab", tf: "t", year: "y" } as const;
+const SRC_PREFIX = { bank: "b", quote: "q", "book-author": "ba", "author-book": "ab", tf: "t", year: "y", order: "o", typed: "k" } as const;
 
 /** Categories no longer played or published; their ids stay registered so earlier daily sets still rebuild. */
 const RETIRED: ReadonlySet<Category> = new Set(["quote"]);
+/**
+ * Interactive kinds that are played but not published: no /q/ pages (they reuse published facts), no daily
+ * sets, no app feed. They are registered after everything else and left out of every id listing, so adding
+ * them changes no existing id, page or daily set.
+ */
+const PLAY_ONLY: ReadonlySet<Category> = new Set(["order", "typed"]);
+/** Left out of the mixed endless deck: they open the keyboard, so they are played on purpose (?cat=typed). */
+const NOT_IN_MIX: ReadonlySet<Category> = new Set(["typed"]);
+
+/** How many events a put-in-order question lines up, at least how many years apart, and how many such sets. */
+const ORDER_SIZE = 4;
+const ORDER_GAP = 10;
+const ORDER_SETS = 240;
+/** Bank answers short enough to type: characters and words. */
+const TYPED_MAX_CHARS = 20;
+const TYPED_MAX_WORDS = 3;
+/** Bank categories whose answers make sense typed (word meanings and grammar do not). */
+const TYPED_FROM: ReadonlySet<Category> = new Set(["geo", "hist", "sci", "gen", "lit"]);
+
+/**
+ * `count` seeded sets of `size` indexes into `years`, each at least `gap` years apart, so the order is never
+ * arguable. The same in every language (years are shared), so a set keeps its id.
+ */
+function orderSets(years: number[], size: number, gap: number, count: number): number[][] {
+    const rand = seeded("order");
+    const sets: number[][] = [];
+    const seen = new Set<string>();
+    for (let tries = 0; sets.length < count && tries < count * 50; tries++) {
+        const set: number[] = [];
+        for (const i of shuffle(years.map((_, k) => k), rand)) {
+            if (set.every((j) => Math.abs(years[i] - years[j]) >= gap)) set.push(i);
+            if (set.length === size) break;
+        }
+        const key = [...set].sort((a, b) => a - b).join(",");
+        if (set.length === size && !seen.has(key)) {
+            seen.add(key);
+            sets.push(set);
+        }
+    }
+    return sets;
+}
 
 /** Deterministic PRNG (mulberry32) seeded from a string, so a question id always yields the same options. */
 function seeded(seed: string): () => number {
@@ -242,6 +291,14 @@ export function createEngine(content: Content, s: Strings) {
             add("more", { kind: "more", m: mi, a, b });
     });
     events.forEach((_, i) => add("year", { kind: "year", i }));
+    // Play-only kinds last (see PLAY_ONLY).
+    const orders = events.length >= ORDER_SIZE ? orderSets(events.map(([, y]) => y), ORDER_SIZE, ORDER_GAP, ORDER_SETS) : [];
+    orders.forEach((_, i) => add("order", { kind: "order", i }));
+    bank.forEach((row, i) => {
+        if (!row || !TYPED_FROM.has(row[0]) || s.listQuestion.test(row[1])) return;
+        const a = row[2].trim();
+        if (a.length <= TYPED_MAX_CHARS && a.split(/\s+/).length <= TYPED_MAX_WORDS && !/[«»"]/.test(a)) add("typed", { kind: "typed", i });
+    });
 
     /** Playable categories: retired ones and ones this language has no questions in are left out. */
     const categories = CATEGORY_ORDER.filter((c) => !RETIRED.has(c) && pools[c].length > 0);
@@ -309,6 +366,19 @@ export function createEngine(content: Content, s: Strings) {
                 const tolerance = y >= 1900 ? 3 : y >= 1500 ? 10 : 25;
                 return { category, id: qid, text: label, isQuote: false, options: [], answer: -1, year: { answer: y, min, max, tolerance }, reveal: `${label}: ${s.year(y)}` };
             }
+            case "order": {
+                const set = orders[src.i];
+                const shown = shuffle(set, rand);
+                const solution = [...shown.keys()].sort((x, y) => events[shown[x]][1] - events[shown[y]][1]);
+                const items = shown.map((e) => events[e][0]);
+                const labels = shown.map((e) => s.year(events[e][1]));
+                const reveal = solution.map((k) => `${items[k]} (${labels[k]})`).join(" ← ");
+                return { category, id: qid, text: s.orderPrompt, isQuote: false, options: [], answer: -1, order: { items, solution, labels }, reveal };
+            }
+            case "typed": {
+                const [, q, a] = bank[src.i]!;
+                return { category, id: qid, text: q, isQuote: false, options: [], answer: -1, typed: { answer: a, accepted: s.typedVariants(a) }, reveal: s.answerIs(a) };
+            }
         }
     }
 
@@ -322,7 +392,7 @@ export function createEngine(content: Content, s: Strings) {
     }
 
     function registeredIds(): [string, Category][] {
-        return [...registry].map(([qid, [c]]) => [qid, c]);
+        return [...registry].filter(([, [c]]) => !PLAY_ONLY.has(c)).map(([qid, [c]]) => [qid, c]);
     }
 
     /** Every published question, as `[id, category]`. Ids are stable: `b3`, `ba7`, `ab7`, `p-flag-dz`, `t3`, `f4-9`, `m1-2-7`, `y5`. */
@@ -349,7 +419,7 @@ export function createEngine(content: Content, s: Strings) {
         solved: ReadonlySet<string> = new Set(),
         { correctRate = () => null, level = () => 0.5 }: DeckTuning = {},
     ) {
-        const enabled: Category[] = filter === "all" ? categories : [filter];
+        const enabled: Category[] = filter === "all" ? categories.filter((c) => !NOT_IN_MIX.has(c)) : [filter];
         const seen = new Set<string>();
         /** Missed questions waiting to come back once `drawn` reaches `due`. */
         const retries: { category: Category; src: Source; due: number }[] = [];

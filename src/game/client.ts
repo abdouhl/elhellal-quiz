@@ -78,13 +78,20 @@ export function showClaim(q: Question) {
     claim.hidden = !q.claim;
 }
 
+/** Called once an interactive question (put in order, type the answer) is answered; `note` adds to the feedback. */
+export type Done = (ok: boolean, note?: string) => void;
+
 /**
- * Fills `opts` with the question's option buttons, or for a guess-the-year question with a year
- * picker that calls `onYear` with the guess once confirmed.
+ * Fills `opts` with the question's option buttons; for a guess-the-year question with a year picker that
+ * calls `onYear` with the guess once confirmed; for put-in-order and type-the-answer questions with their
+ * own controls, which call `onDone` with the result.
  */
-export function renderAnswers(q: Question, opts: HTMLElement, onYear: (guess: number) => void) {
+export function renderAnswers(q: Question, opts: HTMLElement, onYear: (guess: number) => void, onDone: Done = () => {}) {
     opts.classList.toggle("opts-year", !!q.year);
+    opts.classList.toggle("opts-box", !!(q.order || q.typed));
     if (q.year) return opts.replaceChildren(yearPicker(q.year, onYear));
+    if (q.order) return opts.replaceChildren(orderPicker(q.order, onDone));
+    if (q.typed) return opts.replaceChildren(typedBox(q.typed, onDone));
     opts.replaceChildren(
         ...q.options.map((text, i) => {
             const b = document.createElement("button");
@@ -140,6 +147,194 @@ function yearPicker({ min, max, tolerance }: NonNullable<Question["year"]>, onYe
         e.stopPropagation();
         submit();
     });
+    return box;
+}
+
+/**
+ * Put in order: the player taps the items first to last (each tap numbers one; tapping a numbered one takes it
+ * and those after it back), the last one places itself, and "confirm" checks. The items then line up in the
+ * right order, each marked by whether the player had it there, with its year.
+ */
+function orderPicker({ items, solution, labels }: NonNullable<Question["order"]>, onDone: Done): HTMLElement {
+    const box = document.createElement("div");
+    box.className = "ord";
+    box.innerHTML = `
+        <p class="ord-hint"></p>
+        <div class="ord-list"></div>
+        <div class="ord-row">
+            <button type="button" class="brag ord-reset" disabled></button>
+            <button type="button" class="next ord-go" disabled>${s.confirm}</button>
+        </div>`;
+    box.querySelector(".ord-hint")!.textContent = s.orderHint;
+    const list = box.querySelector<HTMLElement>(".ord-list")!;
+    const reset = box.querySelector<HTMLButtonElement>(".ord-reset")!;
+    const go = box.querySelector<HTMLButtonElement>(".ord-go")!;
+    reset.textContent = s.orderReset;
+    const picked: number[] = [];
+    let done = false;
+    const buttons = items.map((text, k) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "ord-item";
+        b.innerHTML = `<span class="ord-n" aria-hidden="true"></span><span class="ord-t"></span><small class="ord-y"></small>`;
+        b.querySelector(".ord-t")!.textContent = text;
+        b.addEventListener("click", () => {
+            if (done) return;
+            const at = picked.indexOf(k);
+            if (at >= 0) picked.splice(at);
+            else {
+                picked.push(k);
+                // One left: it can only go last.
+                if (picked.length === items.length - 1) picked.push(items.findIndex((_, j) => !picked.includes(j)));
+            }
+            paint();
+        });
+        return b;
+    });
+    function paint() {
+        buttons.forEach((b, k) => {
+            const at = picked.indexOf(k);
+            b.classList.toggle("picked", at >= 0);
+            b.querySelector(".ord-n")!.textContent = at >= 0 ? s.n(at + 1) : "";
+            b.setAttribute("aria-pressed", String(at >= 0));
+        });
+        go.disabled = picked.length !== items.length;
+        reset.disabled = picked.length === 0;
+        if (!go.disabled) go.focus();
+    }
+    list.replaceChildren(...buttons);
+    reset.addEventListener("click", () => {
+        picked.length = 0;
+        paint();
+    });
+    go.addEventListener("click", () => {
+        if (done || picked.length !== items.length) return;
+        done = true;
+        const right = picked.filter((k, pos) => k === solution[pos]).length;
+        // The right order, each item marked by whether the player put it in its place.
+        list.replaceChildren(
+            ...solution.map((k, pos) => {
+                const b = buttons[k];
+                b.disabled = true;
+                b.classList.remove("picked");
+                b.classList.add(picked[pos] === k ? "right" : "wrong");
+                b.querySelector(".ord-n")!.textContent = s.n(pos + 1);
+                b.querySelector(".ord-y")!.textContent = labels[k];
+                return b;
+            }),
+        );
+        reset.hidden = go.hidden = true;
+        box.querySelector(".ord-hint")!.textContent = "";
+        onDone(right === items.length, right === items.length ? "" : s.orderDone(right, items.length));
+    });
+    return box;
+}
+
+/** Lowercase letters and digits only: no marks or hamzas, one alef/ya/ha, no articles ("ال", the, el…). */
+export function normalizeAnswer(text: string): string {
+    return text
+        .normalize("NFKD")
+        .replace(/\p{M}/gu, "")
+        .toLowerCase()
+        .replace(/[أإآٱ]/g, "ا")
+        .replace(/ة/g, "ه")
+        .replace(/[ىئ]/g, "ي")
+        .replace(/ؤ/g, "و")
+        .replace(/ـ/g, "")
+        .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660))
+        .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0))
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((w) => w && !ARTICLES.has(w))
+        .map((w) => (w.length > 3 && w.startsWith("ال") ? w.slice(2) : w))
+        .join("");
+}
+const ARTICLES = new Set(["the", "a", "an", "el", "la", "los", "las", "of", "de", "del"]);
+
+/** Edit distance, stopping early once it passes `max`. */
+function distance(a: string, b: string, max: number): number {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+        const row = [i];
+        let low = i;
+        for (let j = 1; j <= b.length; j++) {
+            row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+            low = Math.min(low, row[j]);
+        }
+        if (low > max) return max + 1;
+        prev = row;
+    }
+    return prev[b.length];
+}
+
+/** Whether a typed answer matches one of the accepted spellings, allowing a typo or two in longer words. */
+export function answerMatches(input: string, accepted: string[]): boolean {
+    const got = normalizeAnswer(input);
+    if (!got) return false;
+    return accepted.some((a) => {
+        const want = normalizeAnswer(a);
+        const slack = want.length >= 9 ? 2 : want.length >= 4 ? 1 : 0;
+        return distance(got, want, slack) <= slack;
+    });
+}
+
+/**
+ * Type the answer: one box per letter of the answer as a hint (words spaced apart), a text field, "confirm"
+ * (or Enter), and "I don't know". Spelling is forgiving: see answerMatches.
+ */
+function typedBox({ answer, accepted }: NonNullable<Question["typed"]>, onDone: Done): HTMLElement {
+    const box = document.createElement("div");
+    box.className = "ty";
+    box.innerHTML = `
+        <div class="ty-slots" role="img"></div>
+        <form class="ty-form">
+            <input class="ty-in" type="text" dir="auto" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" />
+            <button type="submit" class="next ty-go">${s.confirm}</button>
+        </form>
+        <button type="button" class="brag ty-skip"></button>`;
+    const slots = box.querySelector<HTMLElement>(".ty-slots")!;
+    const input = box.querySelector<HTMLInputElement>(".ty-in")!;
+    const skip = box.querySelector<HTMLButtonElement>(".ty-skip")!;
+    input.placeholder = s.typedPlaceholder;
+    input.setAttribute("aria-label", s.typedPlaceholder);
+    skip.textContent = s.typedGiveUp;
+    // The hint counts the letters of the shortest accepted spelling (without "river", parentheses…).
+    const hint = accepted.reduce((a, b) => (b.length < a.length ? b : a), answer);
+    const words = hint.split(/\s+/).map((w) => [...w.normalize("NFKD").replace(/\p{M}/gu, "")].filter((c) => /[\p{L}\p{N}]/u.test(c)).length).filter(Boolean);
+    const total = words.reduce((a, b) => a + b, 0);
+    slots.setAttribute("aria-label", `${s.typedLetters}: ${s.n(total)}`);
+    slots.replaceChildren(
+        ...words.map((n) => {
+            const w = document.createElement("span");
+            w.className = "ty-word";
+            w.append(...Array.from({ length: n }, () => document.createElement("i")));
+            return w;
+        }),
+    );
+    const cells = [...slots.querySelectorAll("i")];
+    input.addEventListener("input", () => {
+        const n = [...input.value.replace(/\s+/g, "")].length;
+        cells.forEach((c, i) => c.classList.toggle("on", i < n));
+    });
+    let done = false;
+    const finish = (ok: boolean) => {
+        done = true;
+        input.disabled = true;
+        box.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        box.classList.add(ok ? "right" : "wrong");
+        input.blur();
+        onDone(ok);
+    };
+    box.querySelector("form")!.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (done) return;
+        if (!input.value.trim()) return void input.focus();
+        finish(answerMatches(input.value, accepted));
+    });
+    skip.addEventListener("click", () => !done && finish(false));
+    // Keys typed here are the answer, not the page's shortcuts (1–4 to answer, Enter or space to go on).
+    input.addEventListener("keydown", (e) => e.stopPropagation());
+    requestAnimationFrame(() => input.focus({ preventScroll: true }));
     return box;
 }
 

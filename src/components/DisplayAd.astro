@@ -1,0 +1,111 @@
+---
+// An AdSense display unit for the pages people land on from search (/q/, /c/): never inside the game's
+// card or controls, always below them, so a tap meant for the game can't land on an ad.
+// The slots are the elhellal sister sites' shared units (same publisher). Each unit is only requested
+// once it comes within ~300px of the screen, so the ads that load are seen (viewability drives bids).
+// Nothing shows on noindex pages, inside the elhellal.com app's frame, behind a blocker, or when Google
+// has no ad to fill it with.
+import { t } from "../i18n";
+import type { Lang } from "../i18n";
+
+export interface Props {
+    lang: Lang;
+    /** "display": a responsive banner; "in-article": a native unit that sits in a list or text. */
+    kind?: "display" | "in-article";
+    className?: string;
+}
+
+const SLOTS = { display: "2951250905", "in-article": "8525183818" };
+const { lang, kind = "display", className = "" } = Astro.props;
+const label = t(lang).ad;
+---
+
+<div class:list={["ad-unit", `ad-${kind}`, className]} aria-label={label}>
+    <span class="ad-unit-label">{label}</span>
+    {
+        kind === "in-article" ? (
+            <ins class="adsbygoogle" style="display:block; text-align:center;" data-ad-client="ca-pub-3610150616518651" data-ad-slot={SLOTS[kind]} data-ad-format="fluid" data-ad-layout="in-article" />
+        ) : (
+            <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-3610150616518651" data-ad-slot={SLOTS[kind]} data-ad-format="auto" data-full-width-responsive="true" />
+        )
+    }
+</div>
+
+<script>
+    // adsbygoogle.push({}) fills the first unprocessed <ins> in document order, not a given one, so when a
+    // unit nears the screen, push once for every unrequested unit up to it (hidden ones are removed first).
+    const root = document.documentElement;
+    type AdsQueue = { push: (o: object) => void };
+    const off = () => ["data-embedded", "data-no-ads", "data-ads-blocked"].some((a) => root.hasAttribute(a));
+
+    function requestUpTo(target: Element) {
+        if (off()) return;
+        const units = [...document.querySelectorAll<HTMLElement>(".ad-unit ins.adsbygoogle")];
+        for (const ins of units.slice(0, units.indexOf(target) + 1)) {
+            if (ins.dataset.adRequested || ins.getAttribute("data-adsbygoogle-status")) continue;
+            if (!ins.offsetParent) {
+                ins.remove();
+                continue;
+            }
+            ins.dataset.adRequested = "1";
+            const w = window as unknown as { adsbygoogle?: AdsQueue };
+            (w.adsbygoogle = w.adsbygoogle || ([] as unknown as AdsQueue)).push({});
+        }
+    }
+
+    if (!off()) {
+        const units = document.querySelectorAll<HTMLElement>(".ad-unit ins.adsbygoogle:not([data-ad-requested])");
+        if (!("IntersectionObserver" in window)) units.forEach(requestUpTo);
+        else {
+            const io = new IntersectionObserver(
+                (entries) => {
+                    for (const e of entries) {
+                        if (!e.isIntersecting) continue;
+                        io.unobserve(e.target);
+                        requestUpTo(e.target);
+                    }
+                },
+                { rootMargin: "300px 0px" },
+            );
+            units.forEach((u) => io.observe(u));
+        }
+    }
+</script>
+
+<style>
+    .ad-unit {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-width: 640px;
+        margin: 28px auto 0;
+        padding: 0 16px;
+        min-height: 250px;
+        box-sizing: border-box;
+    }
+    .ad-in-article {
+        min-height: 120px;
+    }
+    .ad-unit-label {
+        font-size: 11px;
+        line-height: 1.4;
+        color: var(--ink-muted, rgb(255 255 255 / 0.45));
+    }
+</style>
+
+<style is:global>
+    /* No box at all where no ad can or did show (an empty "ad" label looks broken). */
+    html:is([data-embedded], [data-no-ads], [data-ads-blocked]) .ad-unit,
+    .ad-unit:has(ins.adsbygoogle[data-ad-status="unfilled"]) {
+        display: none;
+    }
+    /* In a list of links (the category pages), the unit takes a row of its own. */
+    li.ad-row {
+        list-style: none;
+    }
+    li.ad-row .ad-unit {
+        margin: 8px 0;
+        padding: 0;
+        max-width: none;
+    }
+</style>

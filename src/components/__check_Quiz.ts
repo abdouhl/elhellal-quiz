@@ -1,0 +1,609 @@
+    import { CATEGORY_ICONS } from "../game/engine";
+    import type { Category, CategoryFilter, Question } from "../game/engine";
+    import { adShowing, adsOn, breakDue, interstitial, noteBreak, offerReward, withdrawReward } from "../game/ads";
+    import { track } from "../game/track";
+    import { SITE, countAnswer, fetchRates, haptic, home, keepAwake, loadEngine, markMissed, missedIds, num, proudMoment, recordAnswer, renderAnswers, reportQuestion, s, savedPictures, settleYear, shareCard, showClaim, showPicture, store, syncBadge, toast } from "../game/client";
+    import { bestOf, difficulty, rate, rating, recordBest } from "../game/rating";
+
+    const { createDeck, questionById, CATEGORIES } = await loadEngine();
+
+    // The modes, as in the iOS app (Hellal/Game/Game.swift), picked by the URL's query:
+    // - endless (default; ?cat=<category> for one category, ?review for mistakes first): every answer moves the rating;
+    // - ?mode=blitz: as many right answers as possible in 60 seconds, a miss costs 3 seconds;
+    // - ?mode=survival: three lives, a combo multiplier, a speed bonus and a level every ten right answers.
+    type Mode = "endless" | "blitz" | "survival";
+    const params = new URLSearchParams(location.search);
+    const mode: Mode = params.get("mode") === "blitz" ? "blitz" : params.get("mode") === "survival" ? "survival" : "endless";
+    const endless = mode === "endless";
+    const catParam = params.get("cat") as Category | null;
+    const category: CategoryFilter = endless && catParam && CATEGORIES.includes(catParam) ? catParam : "all";
+
+    // At most one full-screen ad break a minute (H5 Games Ads, see src/game/ads.ts): once a break is due,
+    // the endless game waits for a tap on "next" instead of moving on by itself, and that tap asks for an ad.
+    // Blitz and survival never stop for an ad mid-run; a tap on "play again" may ask for one.
+    /** A lost streak this long can be won back once by watching a rewarded ad. */
+    const REVIVE_MIN = 3;
+    /** How long a result stays up before the next question appears on its own; facts add reading time. */
+    const SHOW_RIGHT_MS = 1200;
+    const SHOW_WRONG_MS = 2600;
+    const SHOW_REVEAL_MS = 1400;
+    /** Blitz moves on faster: the clock is running. */
+    const BLITZ_RIGHT_MS = 450;
+    const BLITZ_WRONG_MS = 1300;
+    const BLITZ_MS = 60_000;
+    const BLITZ_PENALTY_MS = 3_000;
+    const LIVES = 3;
+    const PER_LEVEL = 10;
+    /** Seconds the survival speed bonus lasts. */
+    const SPEED_MS = 12_000;
+    const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+    const el = {
+        main: $("main-content"),
+        streak: $("streak"),
+        best: $("best"),
+        lives: $("lives"),
+        tag: $("tag"),
+        float: $("float"),
+        rating: $("rating"),
+        score: $("score"),
+        clock: $("clock"),
+        report: $<HTMLButtonElement>("report"),
+        play: $("play"),
+        qText: $("q-text"),
+        qCat: $("q-cat"),
+        opts: $("opts"),
+        card: $("card"),
+        feedback: $("feedback"),
+        reveal: $("reveal"),
+        auto: $("auto"),
+        next: $<HTMLAnchorElement>("next"),
+        brag: $("brag"),
+        revive: $<HTMLButtonElement>("revive"),
+        lifelines: $("lifelines"),
+        over: $("over"),
+        oTitle: $("o-title"),
+        oScore: $("o-score"),
+        oLabel: $("o-label"),
+        oBest: $("o-best"),
+        oContinue: $<HTMLButtonElement>("o-continue"),
+        oAgain: $<HTMLButtonElement>("o-again"),
+        oShare: $<HTMLButtonElement>("o-share"),
+    };
+
+    // The funnel (GA4): where the game was opened from, then how many answers this page got.
+    const answeredBefore = Number(store.get("quiz.answered")) || 0;
+    track("quiz_start", { mode, category, entry: el.qText.dataset.id ? "question_page" : "play", returning: answeredBefore > 0 });
+    const MILESTONES = new Set([1, 3, 5, 10, 20, 50, 100, 200]);
+    let pageAnswers = 0;
+
+    /** Lifelines (rewarded ads): in the endless quiz offered from this streak on, each once per run (a run ends with a wrong answer). */
+    const LIFELINE_MIN = 2;
+    type Life = "fifty" | "narrow" | "skip";
+    const used = new Set<Life>();
+
+    // The endless streak carries across pages, so a visitor arriving from a pin keeps it when they continue.
+    // Blitz and survival count their own combo from zero.
+    let streak = endless ? Number(store.get("quiz.streak")) || 0 : 0;
+    let best = Math.max(Number(store.get("quiz.bestStreak")) || 0, streak);
+    /** Whether the current streak has beaten the previous best, which is when sharing it is offered. */
+    let record = false;
+    // No ad can show offline, behind a blocker or inside the elhellal.com app's frame: don't stop the game for one there.
+    const adDue = breakDue;
+    /** Set when the tap on "next" will ask for an ad break. */
+    let adBreakNext = false;
+    /** The current streak was won back with an ad; losing it again ends the run for good (one revive per run, as on iOS). */
+    let revived = false;
+    /** Whether the lost streak had beaten the previous best, restored along with it. */
+    let lostRecord = false;
+
+    // The run (blitz and survival).
+    let score = 0;
+    let correct = 0;
+    let lives = LIVES;
+    let deadline = Infinity;
+    let askedAt = Date.now();
+    let over = false;
+    /** Survival's one second chance per run, paid for with a rewarded ad. */
+    let continued = false;
+    /** Set when the tap on "next" ends the run (survival, last life lost). */
+    let finishNext = false;
+
+    /** Ids answered correctly on any visit; they are not asked again until everything has been solved. */
+    const solved = new Set<string>();
+    try {
+        for (const id of JSON.parse(store.get("quiz.solved") ?? "[]")) if (typeof id === "string") solved.add(id);
+    } catch {}
+    // Ask the browser not to evict the saved progress (matters most for the installed PWA).
+    navigator.storage?.persist?.().catch(() => {});
+    /** Percent correct per question, filled in once loaded; until then every question counts as medium. */
+    let rates = new Map<string, number>();
+    fetchRates().then((r) => (rates = r));
+    // Questions near the player's rating; survival starts easy and gets harder level by level.
+    const deck = createDeck(category, Math.random, solved, {
+        correctRate: (id) => rates.get(id) ?? null,
+        level: mode === "survival" ? () => Math.min(0.15 + correct / 80, 0.85) : () => difficulty(),
+    });
+    /** Saved question pictures, refreshed whenever the connection drops. */
+    let saved = new Set<string>();
+    const refreshSaved = () => savedPictures().then((p) => (saved = p));
+    refreshSaved();
+    addEventListener("offline", refreshSaved);
+    /** "Practice mistakes" (?review): missed questions first, in random order, then the usual deck. */
+    let reviewing = endless && params.has("review");
+    const reviewQueue = reviewing ? missedIds().sort(() => Math.random() - 0.5) : [];
+
+    /** The next question, passing over picture questions whose picture can't load while offline. */
+    function draw(): Question {
+        while (reviewing && reviewQueue.length) {
+            const q = questionById(reviewQueue.shift()!);
+            if (q) return q;
+        }
+        if (reviewing) {
+            // Nothing (left) to practise: back to the endless quiz.
+            reviewing = false;
+            toast(s.reviewDone);
+            history.replaceState(null, "", location.pathname);
+        }
+        let q = deck.next();
+        for (let tries = 0; !navigator.onLine && q.image && !saved.has(q.image) && tries < 30; tries++) q = deck.next();
+        return q;
+    }
+    let question: Question | null = null;
+    /** Drawn when an answer is given, so its picture can load while the result is showing. */
+    let upcoming: Question | null = null;
+    let locked = false;
+    let advanceTimer: number | undefined;
+    /** The streak the last wrong answer ended, offered as a brag. */
+    let lostStreak = 0;
+
+    // What each mode shows in the header.
+    el.best.hidden = !endless;
+    el.rating.hidden = !endless;
+    el.score.hidden = endless;
+    el.clock.hidden = mode !== "blitz";
+    el.lives.hidden = mode !== "survival";
+    if (category !== "all") {
+        el.tag.hidden = false;
+        el.tag.textContent = `${CATEGORY_ICONS[category]} ${s.labels[category]}`;
+    } else if (mode === "blitz") {
+        el.tag.hidden = false;
+        el.tag.textContent = "⚡";
+        el.tag.title = s.blitzHint;
+    }
+    el.score.title = mode === "blitz" ? s.rightIn60 : s.survivalHint;
+
+    const level = () => Math.floor(correct / PER_LEVEL) + 1;
+
+    function renderStats(bump = false) {
+        // The sky shifts hue with every level (survival) or every 5 in a row, like the app's background.
+        const step = mode === "survival" ? level() - 1 : Math.floor((endless ? streak : correct) / 5);
+        document.documentElement.style.setProperty("--hue", String((223 + step * 32.4) % 360));
+        el.streak.textContent = `🔥 ${num(streak)}`;
+        el.best.textContent = `★ ${num(best)}`;
+        if (bump) replay(el.streak, "bump");
+        el.rating.firstElementChild!.textContent = num(Math.round(rating()));
+        el.score.firstElementChild!.textContent = num(mode === "blitz" ? correct : score);
+        if (mode === "survival") {
+            el.lives.textContent = "❤️".repeat(Math.max(0, lives)) + "🖤".repeat(Math.max(0, LIVES - lives));
+            el.lives.title = s.lives(lives);
+            el.lives.setAttribute("aria-label", s.lives(lives));
+            el.tag.hidden = false;
+            el.tag.textContent = s.level(level());
+        }
+    }
+
+    /** A number that floats up from the header: the rating change, points won, seconds lost. */
+    function float(text: string, good: boolean) {
+        el.float.textContent = text;
+        el.float.classList.toggle("bad", !good);
+        replay(el.float, "on");
+    }
+
+    /** Restarts a CSS animation class on `node`. */
+    function replay(node: HTMLElement, cls: string) {
+        node.classList.remove(cls);
+        void node.offsetWidth;
+        node.classList.add(cls);
+    }
+
+    /** The /q/<id> page's answer and links, which only apply to the question the page was opened on. */
+    const qa = document.getElementById("qa");
+
+    function renderQuestion(q: Question) {
+        question = q;
+        if (qa && q.id !== el.qText.dataset.id) qa.hidden = true;
+        locked = false;
+        el.qCat.textContent = `${CATEGORY_ICONS[q.category]} ${s.labels[q.category]}`;
+        el.qText.textContent = q.text;
+        el.qText.classList.toggle("is-quote", q.isQuote);
+        showClaim(q);
+        renderAnswers(q, el.opts, guessYear, (ok, note) => question === q && settle(ok, note));
+        askedAt = Date.now();
+        // A picture's download doesn't count against the speed bonus.
+        showPicture(q, () => (askedAt = Date.now()));
+        el.feedback.textContent = "";
+        el.feedback.className = "feedback";
+        el.reveal.textContent = "";
+        el.auto.classList.remove("on");
+        el.next.hidden = true;
+        el.next.href = home;
+        el.next.textContent = s.next;
+        el.brag.hidden = true;
+        el.revive.hidden = true;
+        withdrawReward();
+        el.report.disabled = false;
+        adBreakNext = false;
+        finishNext = false;
+        replay(el.card, "card-in");
+        offerLifelines(q);
+    }
+
+    /** The lifelines that make sense for `q` and are still unused (this run in endless, this level in survival). */
+    function lifelinesFor(q: Question): Life[] {
+        const all: Life[] = q.year ? ["narrow", "skip"] : q.options.length >= 4 ? ["fifty", "skip"] : ["skip"];
+        return all.filter((l) => !used.has(l));
+    }
+
+    /** Asks for a rewarded ad and, once one is ready, shows the lifelines it would pay for. Never in blitz. */
+    function offerLifelines(q: Question) {
+        el.lifelines.hidden = true;
+        const open = lifelinesFor(q);
+        if (mode === "blitz" || (endless && streak < LIFELINE_MIN) || !open.length || !adsOn()) return;
+        offerReward("lifeline", (watch) => {
+            if (question !== q || locked) return;
+            for (const b of el.lifelines.querySelectorAll<HTMLButtonElement>(".life")) {
+                const life = b.dataset.life as Life;
+                b.hidden = !open.includes(life);
+                b.disabled = false;
+                b.onclick = async () => {
+                    el.lifelines.querySelectorAll<HTMLButtonElement>(".life").forEach((x) => (x.disabled = true));
+                    const earned = await watch();
+                    // An ad just played (or was skipped): no interstitial on top of it this minute.
+                    noteBreak();
+                    if (question !== q || locked) return;
+                    if (!earned) return offerLifelines(q);
+                    used.add(life);
+                    // The ad's time doesn't count against the speed bonus.
+                    askedAt = Date.now();
+                    useLifeline(life, q);
+                };
+            }
+            el.lifelines.hidden = false;
+        });
+    }
+
+    function useLifeline(life: Life, q: Question) {
+        track("lifeline_used", { life, mode });
+        if (life === "skip") {
+            // Not scored: the streak stays, and in practice mode the question waits at the end of the round.
+            if (reviewing) reviewQueue.push(q.id);
+            toast(s.skipped);
+            return nextQuestion();
+        }
+        if (life === "fifty") {
+            const wrong = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")].filter((b) => Number(b.dataset.i) !== q.answer);
+            wrong.sort(() => Math.random() - 0.5);
+            for (const b of wrong.slice(0, wrong.length - 1)) {
+                b.disabled = true;
+                b.classList.add("gone");
+            }
+        } else if (life === "narrow" && q.year) {
+            // A window a few tolerances wide that holds the answer, at a random offset, inside the picker's range.
+            const { answer, min, max, tolerance } = q.year;
+            const span = Math.max(20, tolerance * 3);
+            let lo = Math.round((answer - Math.random() * span) / 5) * 5;
+            lo = Math.max(min, Math.min(lo, max - span));
+            const range = el.opts.querySelector<HTMLInputElement>(".yp-range");
+            if (range) {
+                range.min = String(lo);
+                range.max = String(lo + span);
+                range.value = String(lo + span / 2);
+                range.dispatchEvent(new Event("input"));
+                el.opts.querySelector(".yp-val")?.classList.add("narrowed");
+            }
+        }
+        offerLifelines(q);
+    }
+
+    function nextQuestion() {
+        clearTimeout(advanceTimer);
+        advanceTimer = undefined;
+        if (over) return;
+        if ((mode === "blitz" && Date.now() >= deadline) || (mode === "survival" && lives <= 0)) return endRun();
+        renderQuestion(upcoming ?? draw());
+        upcoming = null;
+        renderStats();
+    }
+
+    /** Draws the next question now and starts loading its picture. */
+    function prepareNext() {
+        upcoming = draw();
+        if (upcoming.image) new Image().src = upcoming.image;
+    }
+
+    /** Moves on by itself after `ms`, with a draining bar; a tap anywhere moves on sooner. */
+    function autoAdvance(ms: number) {
+        el.auto.style.setProperty("--ms", `${ms}ms`);
+        replay(el.auto, "on");
+        advanceTimer = window.setTimeout(nextQuestion, ms);
+    }
+
+    /** Shows the "next" control and waits for it; when an ad is due, that tap asks for an ad break. */
+    function showNext() {
+        adBreakNext = endless && adDue();
+        el.next.hidden = false;
+        el.next.focus();
+    }
+
+    /** Taps and keys after an answer: follow the "next" control if it is up, else skip the wait. */
+    function proceed() {
+        // An ad break may open a full-screen ad, so only an explicit tap on "next" may trigger it.
+        if (!locked || over || adBreakNext || adShowing) return;
+        if (!el.next.hidden) el.next.click();
+        else if (advanceTimer !== undefined) nextQuestion();
+    }
+
+    function answer(i: number) {
+        // Only option buttons answer this way (not the year picker, the order picker or the typing box).
+        if (locked || over || !question || !question.options.length) return;
+        const buttons = [...el.opts.querySelectorAll<HTMLButtonElement>(".opt")];
+        buttons.forEach((b) => (b.disabled = true));
+        buttons[question.answer].classList.add("right");
+        if (i !== question.answer) buttons[i].classList.add("wrong");
+        settle(i === question.answer);
+    }
+
+    function guessYear(guess: number) {
+        if (locked || over || !question?.year) return;
+        const { answer, tolerance } = question.year;
+        const ok = Math.abs(guess - answer) <= tolerance;
+        settleYear(el.opts, ok);
+        settle(ok, guess === answer ? s.exact : s.yourYear(guess), guess === answer);
+    }
+
+    /** Scores the answer to the question on screen; `note` adds to the feedback (the year guessed). */
+    function settle(ok: boolean, note = "", exact = false) {
+        if (locked || !question) return;
+        locked = true;
+        const q = question;
+        el.lifelines.hidden = true;
+        withdrawReward();
+        recordAnswer(q.id, ok);
+        countAnswer();
+        if (MILESTONES.has(++pageAnswers)) track("quiz_progress", { mode, n: pageAnswers });
+        markMissed(q.id, ok);
+        haptic(ok);
+        keepAwake();
+
+        if (endless) {
+            const delta = Math.round(rate(ok, rates.get(q.id) ?? null));
+            if (delta) float(delta > 0 ? `+${num(delta)}` : `−${num(-delta)}`, delta > 0);
+        }
+        if (ok) {
+            streak++;
+            correct++;
+            solved.add(q.id);
+            store.set("quiz.solved", JSON.stringify([...solved]));
+            if (endless) {
+                if (streak % 5 === 0) proudMoment();
+                if (streak > best) {
+                    best = streak;
+                    record = streak > 1;
+                    store.set("quiz.bestStreak", String(best));
+                }
+            } else if (mode === "survival") {
+                // Points: 100, up to 100 more for speed, times the combo (×2 every 5 in a row, up to ×5), doubled for an exact year.
+                const speed = Math.max(0, 1 - (Date.now() - askedAt) / SPEED_MS);
+                const gain = (100 + Math.round(100 * speed)) * Math.min(1 + Math.floor(streak / 5), 5) * (exact ? 2 : 1);
+                score += gain;
+                float(`+${num(gain)}`, true);
+                if (correct % PER_LEVEL === 0) {
+                    // A new level: the lifelines are back.
+                    used.clear();
+                    toast(s.levelUp(level()));
+                    proudMoment();
+                }
+            }
+        } else {
+            // in practice mode it comes back at the end of the round, unless it was the last one
+            if (reviewing && reviewQueue.length) reviewQueue.push(q.id);
+            else deck.retry(q.id);
+            lostStreak = streak;
+            streak = 0;
+            if (endless) used.clear();
+            if (mode === "survival") lives--;
+            if (mode === "blitz") {
+                deadline -= BLITZ_PENALTY_MS;
+                float(s.penalty, false);
+            }
+        }
+        if (endless) store.set("quiz.streak", String(streak));
+        renderStats(ok);
+
+        el.feedback.textContent = [ok ? s.right : s.wrong, note].filter(Boolean).join(" · ");
+        el.feedback.className = ok ? "feedback ok" : "feedback bad";
+        const reveal = q.reveal || (ok || q.year ? "" : s.correctIs(q.options[q.answer]));
+        el.reveal.textContent = reveal;
+        prepareNext();
+
+        if (mode === "blitz") return autoAdvance(ok ? BLITZ_RIGHT_MS : BLITZ_WRONG_MS);
+        if (mode === "survival") {
+            if (lives > 0) return autoAdvance((ok ? SHOW_RIGHT_MS : SHOW_WRONG_MS) + (q.reveal ? SHOW_REVEAL_MS : 0));
+            // The last life: let the answer be read, then the results.
+            finishNext = true;
+            el.next.textContent = s.results;
+            return showNext();
+        }
+
+        // A broken record is worth sharing: wait for the player instead of moving on.
+        const brag = !ok && record && lostStreak >= 3;
+        if (!ok) {
+            lostRecord = record;
+            record = false;
+        }
+        el.brag.hidden = !brag;
+        // A long streak lost: offer to win it back with a rewarded ad (only shown if Google has one ready).
+        const revive = !ok && !revived && lostStreak >= REVIVE_MIN && adsOn();
+        if (!ok) revived = false;
+        if (revive) offerRevive(q);
+        if (brag || revive || adDue()) showNext();
+        else autoAdvance((ok ? SHOW_RIGHT_MS : SHOW_WRONG_MS) + (q.reveal ? SHOW_REVEAL_MS : 0));
+    }
+
+    /** Shows the "win back 🔥N" button once a rewarded ad is ready for this wrong answer. */
+    function offerRevive(q: Question) {
+        const n = lostStreak;
+        offerReward("keep-streak", (watch) => {
+            if (question !== q || !locked) return;
+            el.revive.lastElementChild!.textContent = s.reviveStreak(n);
+            el.revive.hidden = false;
+            el.revive.disabled = false;
+            el.revive.onclick = async () => {
+                el.revive.disabled = true;
+                const earned = await watch();
+                if (!earned || question !== q) {
+                    el.revive.hidden = true;
+                    return;
+                }
+                streak = n;
+                revived = true;
+                record = lostRecord;
+                store.set("quiz.streak", String(streak));
+                // An ad just played: count it as this minute's break.
+                noteBreak();
+                toast(s.streakBack(n));
+                track("streak_revived", { n });
+                nextQuestion();
+                renderStats(true);
+            };
+        });
+    }
+
+    // Blitz: the clock, which ends the run as soon as it runs out (an answer on screen gets its moment first).
+    function tick() {
+        if (over || mode !== "blitz") return;
+        const left = Math.max(0, deadline - Date.now());
+        const secs = Math.ceil(left / 1000);
+        el.clock.firstElementChild!.textContent = `${num(Math.floor(secs / 60))}:${num(secs % 60).padStart(2, num(0))}`;
+        el.clock.classList.toggle("low", secs <= 10);
+        if (left <= 0 && !locked) endRun();
+    }
+
+    /** The result of a blitz or survival run. */
+    function endRun() {
+        if (over) return;
+        over = true;
+        locked = true;
+        clearTimeout(advanceTimer);
+        advanceTimer = undefined;
+        withdrawReward();
+        const result = mode === "blitz" ? correct : score;
+        track("run_end", { mode, result });
+        const isRecord = result > 0 && recordBest(mode as "blitz" | "survival", result);
+        el.play.hidden = true;
+        el.over.hidden = false;
+        el.oTitle.textContent = mode === "blitz" ? s.timeUp : s.gameOver;
+        el.oScore.textContent = num(result);
+        el.oLabel.textContent = mode === "blitz" ? s.rightIn60 : s.points;
+        el.oBest.textContent = isRecord ? s.newRecord : s.bestN(bestOf(mode as "blitz" | "survival"));
+        if (isRecord) proudMoment();
+        el.oContinue.hidden = true;
+        // Survival's one second chance, paid for with a rewarded ad (only shown once Google has one ready).
+        if (mode === "survival" && !continued && adsOn()) {
+            offerReward("continue", (watch) => {
+                if (!over) return;
+                el.oContinue.hidden = false;
+                el.oContinue.disabled = false;
+                el.oContinue.onclick = async () => {
+                    el.oContinue.disabled = true;
+                    const earned = await watch();
+                    noteBreak();
+                    if (!earned) return void (el.oContinue.disabled = false);
+                    continued = true;
+                    lives = 1;
+                    over = false;
+                    el.over.hidden = true;
+                    el.play.hidden = false;
+                    nextQuestion();
+                };
+            });
+        }
+        el.oAgain.focus();
+    }
+
+    el.oAgain.addEventListener("click", async () => {
+        if (adShowing) return;
+        el.oAgain.disabled = true;
+        // A natural break the player chose: an interstitial may show here, at most once a minute.
+        if (adDue()) {
+            noteBreak();
+            await interstitial("play-again");
+        }
+        location.reload();
+    });
+    el.oShare.addEventListener("click", () => {
+        const result = mode === "blitz" ? correct : score;
+        shareCard(
+            { kicker: mode === "blitz" ? s.blitz : s.survival, big: num(result), sub: mode === "blitz" ? s.rightIn60 : s.points, foot: s.cardCta },
+            mode === "blitz" ? s.shareBlitz(result) : s.shareSurvival(result),
+            `${SITE}${home}play/?mode=${mode}`,
+        );
+    });
+
+    el.next.addEventListener("click", async (e) => {
+        e.preventDefault();
+        if (adShowing) return;
+        if (finishNext) return endRun();
+        if (adBreakNext) {
+            adBreakNext = false;
+            noteBreak();
+            el.next.hidden = true;
+            await interstitial("next-question");
+        }
+        nextQuestion();
+    });
+    el.brag.addEventListener("click", () =>
+        shareCard({ kicker: s.bestTitle, big: num(lostStreak), sub: s.cardStreak, foot: s.cardCta }, s.bragText(lostStreak), `${SITE}${home}`),
+    );
+    el.report.addEventListener("click", async () => {
+        if (!question) return;
+        el.report.disabled = true;
+        const sent = await reportQuestion(question.id);
+        toast(sent ? s.reportOk : s.reportFail);
+        if (!sent) el.report.disabled = false;
+    });
+    el.opts.addEventListener("click", (e) => {
+        const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".opt");
+        if (b && !b.disabled) answer(Number(b.dataset.i));
+    });
+    // Anywhere that isn't a control moves on once the question is answered.
+    el.main.addEventListener("click", (e) => {
+        if (!(e.target as HTMLElement).closest("button, a, input")) proceed();
+    });
+    document.addEventListener("keydown", (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || adShowing) return;
+        const idx = e.key.length === 1 ? Math.max("1234".indexOf(e.key), "١٢٣٤".indexOf(e.key)) : -1;
+        if (idx >= 0) {
+            const b = el.opts.children[idx] as HTMLButtonElement | undefined;
+            if (b && !b.disabled) answer(idx);
+        } else if ((e.key === "Enter" || e.key === " ") && locked && !(document.activeElement as HTMLElement | null)?.closest("button, a")) {
+            e.preventDefault();
+            proceed();
+        }
+    });
+
+    // A pinned question (already rendered server-side with the same seeded options) or a random start.
+    syncBadge();
+    const startId = el.qText.dataset.id;
+    const first = (startId && questionById(startId)) || null;
+    if (first) {
+        renderQuestion(first);
+        renderStats();
+    } else nextQuestion();
+    if (mode === "blitz") {
+        deadline = Date.now() + BLITZ_MS;
+        tick();
+        setInterval(tick, 200);
+    }
+export {};

@@ -16,7 +16,7 @@ const s = t(lang);
         <span id="d-num" class="chip">{s.dailyChip}</span>
         <span id="d-prog" class="chip chip-n">{s.n(0)}/{s.n(10)}</span>
         <span class="topbar-end">
-            <a class="chip chip-btn" href={`${base(lang)}/play/`}>{s.endless}</a>
+            <a id="d-endless" class="chip chip-btn" href={`${base(lang)}/play/`}>{s.endless}</a>
         </span>
     </div>
 
@@ -56,7 +56,7 @@ const s = t(lang);
         <p id="r-streak" class="result-streak"></p>
         <button type="button" id="r-share" class="next">{s.shareScore}</button>
         <p class="result-next">{s.nextIn} <span id="r-countdown"></span></p>
-        <a class="brag" href={`${base(lang)}/play/`}>{s.keepPlaying}</a>
+        <a id="r-more" class="brag" href={`${base(lang)}/play/`}>{s.keepPlaying}</a>
     </section>
     <noscript><p class="noscript">{s.noscript}</p></noscript>
 </main>
@@ -64,7 +64,8 @@ const s = t(lang);
 <script>
     import { CATEGORY_ICONS, DAILY_SIZE, dayKey, dayNumber } from "../game/engine";
     import type { Question } from "../game/engine";
-    import { offerReward } from "../game/ads";
+    import { breakBefore, offerReward } from "../game/ads";
+    import { track } from "../game/track";
     import { DAILY_KEY as KEY, SITE, countAnswer, crowdLine, haptic, home, keepAwake, loadEngine, markMissed, num, proudMoment, recordAnswer, renderAnswers, restorableDailyStreak, restoreDailyStreak, s, settleYear, shareCard, showClaim, showPicture, store, syncBadge, toast } from "../game/client";
 
     const { dailyIds, questionById } = await loadEngine();
@@ -230,8 +231,12 @@ const s = t(lang);
         return low;
     }
 
+    /** Whether today's challenge was already over when the page opened (a revisit, not a finish). */
+    const doneOnLoad = state.hits.length >= state.ids.length;
+    if (!doneOnLoad) track("daily_start", { resumed: state.hits.length > 0 });
     function showResult() {
         const score = state.hits.filter(Boolean).length;
+        if (!doneOnLoad) track("daily_result", { result: score });
         const grid = state.hits.map((h) => (h ? "🟧" : "⬛")).join("");
         const streak = store.get(`${KEY}.last`) === today ? Number(store.get(`${KEY}.streak`)) || 1 : 0;
         const streakLine = streak >= 2 ? s.daysInRow(streak) : "";
@@ -290,6 +295,11 @@ const s = t(lang);
                 toast(s.dailyBack(lost));
             };
         });
+
+    // Once the challenge is over (never during it), leaving for the endless quiz is a natural break.
+    const finished = () => !el.result.hidden;
+    breakBefore($<HTMLAnchorElement>("r-more"), "daily-done", finished);
+    breakBefore($<HTMLAnchorElement>("d-endless"), "daily-done", finished);
 
     el.next.addEventListener("click", advance);
     el.opts.addEventListener("click", (e) => {

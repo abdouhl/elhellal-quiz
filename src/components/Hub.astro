@@ -86,6 +86,14 @@ const cats = categories(lang);
             <b>{s.practice}</b>
             <span id="t-missed" class="tile-badge" hidden></span>
         </a>
+        <a class="tile tile-purple" href={`${play}?cat=order`}>
+            <span class="tile-ico" aria-hidden="true">🔢</span>
+            <b>{s.labels.order}</b>
+        </a>
+        <a class="tile tile-green" href={`${play}?cat=typed`}>
+            <span class="tile-ico" aria-hidden="true">⌨️</span>
+            <b>{s.labels.typed}</b>
+        </a>
         <a class="tile tile-blue" href={`${base(lang)}/c/`}>
             <span class="tile-ico" aria-hidden="true">📚</span>
             <b>{s.allCategories}</b>
@@ -102,7 +110,8 @@ const cats = categories(lang);
 
 <script>
     import { DAILY_SIZE, dayKey, dayNumber } from "../game/engine";
-    import { offerReward } from "../game/ads";
+    import { breakBefore, offerReward } from "../game/ads";
+    import { track } from "../game/track";
     import { DAILY_KEY, dailyStatus, home, missedIds, num, restorableDailyStreak, restoreDailyStreak, s, store, syncBadge, toast } from "../game/client";
     import { RANK_COLORS, RANK_FLOORS, bestOf, rankOf, rating } from "../game/rating";
 
@@ -199,6 +208,12 @@ const cats = categories(lang);
         badge.hidden = missed < 1;
         badge.textContent = num(missed);
         $("t-review").title = missed ? s.reviewTitle(missed) : s.reviewDone;
+    }
+
+    // Starting a game is a natural break: when one is due, the tap may show an interstitial first ("start").
+    for (const a of document.querySelectorAll<HTMLAnchorElement>('.lobby a[href*="/play/"]')) {
+        a.addEventListener("click", () => track("lobby_play", { target: new URL(a.href).search || "endless" }));
+        breakBefore(a, "start-game");
     }
 
     render();
