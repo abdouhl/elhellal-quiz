@@ -3,6 +3,8 @@ import { DEFAULT_LANG, base, t } from "../i18n";
 import type { Lang } from "../i18n";
 import { dayKey } from "./engine";
 import type { Question } from "./engine";
+import { matchBox, numpadBox, searchBox, showExtra, sortBox, tapAllBox, tilesBox } from "./widgets";
+import type { Done } from "./widgets";
 
 export const SITE = "https://quiz.elhellal.com";
 
@@ -48,14 +50,27 @@ export function showPicture(q: Question, onShown: () => void = () => {}) {
     const credit = fig.querySelector("a")!;
     document.getElementById("q-text")!.classList.toggle("has-pic", !!q.image);
     fig.hidden = !q.image;
+    delete fig.dataset.effect;
     if (!q.image) return;
-    fig.dataset.kind = q.category;
+    fig.dataset.kind = q.image.includes("/flag/") ? "flag" : q.image.includes("/face/") ? "face" : q.category;
     credit.textContent = q.credit ? `📷 ${q.credit}` : "";
     credit.href = q.creditUrl || "#";
     credit.hidden = !q.credit;
-    img.onload = img.onerror = () => onShown();
+    let shown = false;
+    const show = () => {
+        if (shown) return;
+        shown = true;
+        // A blurred or zoomed picture starts clearing up only once it is on screen.
+        if (q.effect) {
+            fig.style.setProperty("--fx-x", `${q.effect.x}%`);
+            fig.style.setProperty("--fx-y", `${q.effect.y}%`);
+            fig.dataset.effect = q.effect.kind;
+        }
+        onShown();
+    };
+    img.onload = img.onerror = show;
     img.src = q.image;
-    if (img.complete) onShown();
+    if (img.complete) show();
 }
 
 /**
@@ -78,8 +93,7 @@ export function showClaim(q: Question) {
     claim.hidden = !q.claim;
 }
 
-/** Called once an interactive question (put in order, type the answer) is answered; `note` adds to the feedback. */
-export type Done = (ok: boolean, note?: string) => void;
+export type { Done } from "./widgets";
 
 /**
  * Fills `opts` with the question's option buttons; for a guess-the-year question with a year picker that
@@ -87,18 +101,34 @@ export type Done = (ok: boolean, note?: string) => void;
  * own controls, which call `onDone` with the result.
  */
 export function renderAnswers(q: Question, opts: HTMLElement, onYear: (guess: number) => void, onDone: Done = () => {}) {
+    showExtra(q);
     opts.classList.toggle("opts-year", !!q.year);
-    opts.classList.toggle("opts-box", !!(q.order || q.typed));
+    opts.classList.toggle("opts-box", !q.year && !q.options.length);
+    opts.classList.toggle("opts-pics", !!q.optionImages);
     if (q.year) return opts.replaceChildren(yearPicker(q.year, onYear));
     if (q.order) return opts.replaceChildren(orderPicker(q.order, onDone));
     if (q.typed) return opts.replaceChildren(typedBox(q.typed, onDone));
+    if (q.tiles) return opts.replaceChildren(tilesBox(q.tiles, onDone));
+    if (q.numpad) return opts.replaceChildren(numpadBox(q.numpad, onDone));
+    if (q.match) return opts.replaceChildren(matchBox(q.match, onDone));
+    if (q.sort) return opts.replaceChildren(sortBox(q.sort, onDone));
+    if (q.tapall) return opts.replaceChildren(tapAllBox(q.tapall, onDone));
+    if (q.search) return opts.replaceChildren(searchBox(q.search, onDone));
     opts.replaceChildren(
         ...q.options.map((text, i) => {
             const b = document.createElement("button");
             b.type = "button";
             b.className = "opt";
             b.dataset.i = String(i);
-            b.textContent = text;
+            if (q.optionImages) {
+                // The name would give the answer away: only the picture, labelled by its number.
+                const img = document.createElement("img");
+                img.src = q.optionImages[i];
+                img.alt = "";
+                img.decoding = "async";
+                b.append(img);
+                b.setAttribute("aria-label", s.n(i + 1));
+            } else b.textContent = text;
             return b;
         }),
     );
@@ -155,7 +185,7 @@ function yearPicker({ min, max, tolerance }: NonNullable<Question["year"]>, onYe
  * and those after it back), the last one places itself, and "confirm" checks. The items then line up in the
  * right order, each marked by whether the player had it there, with its year.
  */
-function orderPicker({ items, solution, labels }: NonNullable<Question["order"]>, onDone: Done): HTMLElement {
+function orderPicker({ items, solution, labels, hint }: NonNullable<Question["order"]>, onDone: Done): HTMLElement {
     const box = document.createElement("div");
     box.className = "ord";
     box.innerHTML = `
@@ -165,7 +195,7 @@ function orderPicker({ items, solution, labels }: NonNullable<Question["order"]>
             <button type="button" class="brag ord-reset" disabled></button>
             <button type="button" class="next ord-go" disabled>${s.confirm}</button>
         </div>`;
-    box.querySelector(".ord-hint")!.textContent = s.orderHint;
+    box.querySelector(".ord-hint")!.textContent = hint ?? s.orderHint;
     const list = box.querySelector<HTMLElement>(".ord-list")!;
     const reset = box.querySelector<HTMLButtonElement>(".ord-reset")!;
     const go = box.querySelector<HTMLButtonElement>(".ord-go")!;
@@ -336,6 +366,11 @@ function typedBox({ answer, accepted }: NonNullable<Question["typed"]>, onDone: 
     input.addEventListener("keydown", (e) => e.stopPropagation());
     requestAnimationFrame(() => input.focus({ preventScroll: true }));
     return box;
+}
+
+/** Shows a blurred or zoomed picture in full, once its question is answered. */
+export function clearEffect() {
+    delete document.getElementById("q-fig")?.dataset.effect;
 }
 
 /** Marks the year picker with how the guess went. */

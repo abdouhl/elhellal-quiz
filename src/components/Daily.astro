@@ -186,7 +186,7 @@ const s = t(lang);
         if (locked || !question) return;
         locked = true;
         const q = question;
-        const reveal = [note, q.reveal].filter(Boolean).join(" · ");
+        const reveal = [note, q.reveal].filter(Boolean).join(" — ");
         state.hits.push(ok);
         save();
         if (state.hits.length === state.ids.length) finishDay();

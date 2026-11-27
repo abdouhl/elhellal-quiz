@@ -34,7 +34,8 @@ const SPLASH: [number, number, number][] = [
 <head>
     <meta charset="UTF-8" />
     <meta name="Petal-Search-site-verification" content="09f2a1c125" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover: lets env(safe-area-inset-*) report the notch and home bar on iPhones. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     {SPLASH.map(([w, h, r]) => (
@@ -65,6 +66,7 @@ const SPLASH: [number, number, number][] = [
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={pageDescription} />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={s.siteName} />
     <meta property="og:locale" content={s.ogLocale} />
     {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
     {ogImage && <meta property="og:image" content={ogImage} />}
@@ -333,6 +335,7 @@ const SPLASH: [number, number, number][] = [
         overflow-x: hidden;
         font-family: var(--body-copy);
         min-height: 100vh;
+        min-height: 100dvh;
         color: var(--content-primary);
         background: var(--background-high-contrast);
     }
@@ -343,29 +346,35 @@ const SPLASH: [number, number, number][] = [
         font-family: var(--body-strong);
         font-weight: 500;
     }
+    /* Parked above the page, not off to a side: a sideways offset widens the page on phones. */
     .skip-link {
         position: absolute;
-        top: -100px;
-        left: 50%;
-        transform: translateX(-50%);
+        top: 8px;
+        inset-inline-start: 8px;
+        transform: translateY(calc(-100% - 16px));
         padding: 8px 16px;
         background: var(--background);
         color: var(--link);
         z-index: 9999;
     }
     .skip-link:focus {
-        top: 8px;
+        transform: none;
     }
     .site-footer {
-        height: 48px;
+        box-sizing: border-box;
+        min-height: 48px;
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         justify-content: center;
+        gap: 2px 18px;
+        padding: 8px max(16px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
         font-size: 0.8rem;
     }
     .site-footer a {
         color: var(--content-secondary);
         text-decoration: none;
+        white-space: nowrap;
     }
     .site-footer a:hover {
         color: var(--link);

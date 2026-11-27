@@ -93,8 +93,10 @@ html:has(.app, .hub) .site-footer a { color: var(--ink-muted); }
     min-height: calc(100svh - 48px);
     max-width: 640px;
     margin: 0 auto;
-    padding: 16px 16px 0;
+    padding: 16px max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
     font-family: var(--game-font);
+    /* The card slides in from 40px aside: clip it, or phones widen the whole page to fit it and zoom out. */
+    overflow-x: clip;
 }
 
 /* Header: round glass chips (the app's Theme.card capsules). */
@@ -451,13 +453,11 @@ html:has(.app, .hub) .site-footer a { color: var(--ink-muted); }
 .qa-links a { flex: 1; text-align: center; }
 
 /* /c/ and /c/<category>: question lists by category. */
-.hub { max-width: 1000px; margin: 0 auto; padding: 20px 16px 0; font-family: var(--game-font); }
+.hub { max-width: 1000px; margin: 0 auto; padding: 20px max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); font-family: var(--game-font); }
 .hub-intro { color: var(--ink-muted); margin: 0 0 16px; }
 .hub-play { margin: 0 0 26px; }
 .hub-cats { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .hub-count { color: var(--ink-muted); font-size: 0.9rem; }
-
-.site-footer { display: flex; justify-content: center; gap: 20px; }
 
 @media (max-width: 640px) {
     .app { gap: 12px; padding-top: 12px; }
@@ -753,3 +753,344 @@ html:has(.app, .hub) .site-footer a { color: var(--ink-muted); }
 .ty.right .ty-in { border-color: var(--right); color: var(--right); }
 .ty.wrong .ty-in { border-color: var(--wrong); color: var(--wrong); animation: shake 0.4s linear; }
 .ty-skip:disabled, .ty-go:disabled { opacity: 0.5; }
+
+/* The generated question kinds. Shared: a shake for a wrong try, chunky idle-blue buttons like the options. */
+.shake { animation: shake 0.4s linear; }
+:is(.tl-tile, .mt-item) {
+    --face: var(--idle);
+    --base: var(--idle-base);
+    border: 0;
+    border-radius: 14px;
+    background: linear-gradient(color-mix(in srgb, var(--face), #fff 10%), var(--face));
+    box-shadow: 0 4px 0 var(--base);
+    color: #fff;
+    font-family: var(--game-font);
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.12s cubic-bezier(0.3, 1.6, 0.6, 1), box-shadow 0.12s, filter 0.15s;
+}
+:is(.tl-tile, .mt-item):active:not(:disabled) { transform: translateY(4px); box-shadow: 0 0 0 var(--base); }
+.mt-item:disabled { cursor: default; }
+.mt-item.right { --face: var(--game-green); --base: var(--game-green-base); }
+:is(.mt-item, .tl-slot).wrong { --face: var(--game-red); --base: var(--game-red-base); animation: shake 0.4s linear; }
+.mt-item.picked { --face: var(--gold); --base: var(--gold-base); color: #3a2a00; }
+
+/* The line under the question: a word with blanks, or a number puzzle. */
+.q-extra { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; color: var(--card-ink); }
+.q-masked i {
+    display: grid;
+    place-items: center;
+    min-width: 34px;
+    height: 42px;
+    border-radius: 10px;
+    background: rgb(31 31 77 / 0.08);
+    font-family: var(--game-font);
+    font-size: 1.5rem;
+    font-style: normal;
+    font-weight: 900;
+}
+.q-masked i.blank { background: var(--gold); color: #3a2a00; }
+.q-puzzle { flex-direction: column; align-items: center; gap: 4px; font-family: var(--game-font); font-size: 1.7rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+
+/* Blurred and zoomed pictures clear up over 12 seconds, and at once when answered. */
+.q-fig[data-effect] { overflow: hidden; }
+.q-fig[data-effect="blur"] img { animation: fx-blur 12s linear forwards; }
+.q-fig[data-effect="zoom"] img { transform-origin: var(--fx-x) var(--fx-y); animation: fx-zoom 12s cubic-bezier(0.4, 0, 0.6, 1) forwards; }
+@keyframes fx-blur { from { filter: blur(22px); } to { filter: blur(0); } }
+@keyframes fx-zoom { from { transform: scale(5); } to { transform: scale(1); } }
+
+/* Pick the picture: a 2×2 grid of pictures. */
+.opts-pics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.opts-pics .opt { justify-content: center; min-height: 108px; margin: 0 0 5px; padding: 12px; }
+.opts-pics .opt img { display: block; max-width: 100%; max-height: 80px; border-radius: 4px; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.15); }
+.opts-pics .opt::before { position: absolute; top: 6px; inset-inline-start: 6px; width: 22px; height: 22px; border-radius: 7px; font-size: 0.75rem; }
+.opts-pics .opt::after { position: absolute; top: 6px; inset-inline-end: 8px; }
+
+/* Letter tiles */
+.tl { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 18px 12px; border-radius: 22px; background: var(--glass); }
+.tl-slots { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; }
+.tl-word { display: flex; gap: 5px; }
+.tl-slot {
+    --face: #fff;
+    width: 38px;
+    height: 46px;
+    padding: 0;
+    border: 2px dashed rgb(255 255 255 / 0.4);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--card-ink);
+    font-family: var(--game-font);
+    font-size: 1.5rem;
+    font-weight: 900;
+    cursor: pointer;
+}
+.tl-slot.on { border: 0; background: #fff; }
+.tl-slot.right { border: 0; background: var(--game-green); color: #fff; animation: pop 0.35s cubic-bezier(0.3, 1.6, 0.6, 1); }
+.tl-slot.wrong { border: 0; background: var(--game-red); color: #fff; }
+.tl-slot:disabled { cursor: default; }
+.tl-tray { display: grid; grid-template-columns: repeat(6, minmax(0, 52px)); justify-content: center; gap: 8px; width: 100%; }
+.tl-tile { --face: var(--gold); --base: var(--gold-base); aspect-ratio: 1; padding: 0; color: #3a2a00; font-size: 1.6rem; font-weight: 900; }
+.tl-tile.used { visibility: hidden; }
+.tl-skip:disabled { opacity: 0.5; }
+
+/* Match pairs */
+.mt { display: flex; flex-direction: column; gap: 10px; }
+.mt-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mt-col { display: flex; flex-direction: column; gap: 10px; }
+.mt-item { display: grid; place-items: center; min-height: 60px; margin-bottom: 4px; padding: 8px 10px; font-size: 1rem; line-height: 1.3; }
+.mt-pic img { display: block; max-width: 100%; max-height: 44px; border-radius: 3px; }
+.mt-item.right { animation: pop 0.35s cubic-bezier(0.3, 1.6, 0.6, 1); }
+
+/* Tap all that apply */
+.ta { display: flex; flex-direction: column; gap: 12px; }
+.ta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ta-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 76px;
+    padding: 8px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--glass);
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.12s, opacity 0.2s;
+}
+.ta-cell img { display: block; max-width: 100%; max-height: 52px; border-radius: 3px; }
+.ta-cell.picked { box-shadow: inset 0 0 0 3px var(--gold); transform: scale(0.96); }
+.ta-cell.right { box-shadow: inset 0 0 0 3px var(--right); transform: none; }
+.ta-cell.missed { box-shadow: inset 0 0 0 3px var(--right); transform: none; border: 2px dashed var(--right); }
+.ta-cell.wrong { box-shadow: inset 0 0 0 3px var(--wrong); transform: none; animation: shake 0.4s linear; }
+.ta-cell.ok { opacity: 0.45; }
+.ta-cell:disabled { cursor: default; }
+.ta-name { font-size: 0.75rem; font-weight: 700; line-height: 1.2; color: #fff; }
+
+/* Word search */
+.ws { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.ws-clues { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.ws-clue { position: relative; display: block; transition: opacity 0.2s; }
+.ws-clue img { display: block; height: 38px; border-radius: 4px; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.15); }
+.ws-clue.found img { opacity: 0.35; }
+.ws-clue.found::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--right); font-size: 1.6rem; font-weight: 900; }
+.ws-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--n), 1fr);
+    gap: 4px;
+    width: min(100%, 360px);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.ws-cell {
+    aspect-ratio: 1;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--card-ink);
+    font-family: var(--game-font);
+    font-size: 1.2rem;
+    font-weight: 900;
+    cursor: pointer;
+}
+.ws-cell:disabled { cursor: default; }
+.ws-cell.sel { background: var(--gold); }
+.ws-cell.found.ws-c0 { background: #7ee08a; }
+.ws-cell.found.ws-c1 { background: #b79cff; }
+.ws-cell.found.ws-c2 { background: #ffb26b; }
+.ws-cell.found.ws-c3 { background: #6fd6ff; }
+.ws-skip:disabled { opacity: 0.5; }
+
+/* Number pad (math puzzles): a calculator, as in number-puzzle apps. */
+.np { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 22px; background: rgb(0 0 0 / 0.25); }
+.np-top { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; }
+.np-screen {
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+    padding: 0 6px 0 14px;
+    border-radius: 12px;
+    background: rgb(255 255 255 / 0.08);
+    box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.12);
+}
+.np-val { flex: 1; font-family: var(--game-font); font-size: 1.6rem; font-weight: 900; font-variant-numeric: tabular-nums; color: #fff; }
+.np-val.empty { color: var(--ink-muted); font-size: 1rem; font-weight: 600; }
+.np-screen.right { box-shadow: inset 0 0 0 2px var(--right); }
+.np-screen.right .np-val { color: var(--right); }
+.np-screen.wrong { box-shadow: inset 0 0 0 2px var(--wrong); }
+.np-screen.wrong .np-val { color: var(--wrong); }
+:is(.np-del, .np-hint, .np-enter, .np-key) {
+    border: 0;
+    border-radius: 12px;
+    color: #fff;
+    font-family: var(--game-font);
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.15s;
+}
+:is(.np-hint, .np-enter, .np-key):active:not(:disabled) { transform: scale(0.94); }
+:is(.np-del, .np-hint, .np-enter, .np-key):disabled { cursor: default; opacity: 0.5; }
+.np-del { width: 40px; height: 40px; background: none; color: var(--ink-muted); font-size: 1.1rem; }
+.np-hint { width: 56px; background: rgb(255 255 255 / 0.1); font-size: 1.3rem; }
+.np-enter { background: var(--gold); color: #3a2a00; font-size: 1.05rem; letter-spacing: 0.04em; }
+.np-keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.np-key { height: 56px; background: rgb(255 255 255 / 0.1); font-size: 1.5rem; }
+.np-key:hover:not(:disabled), .np-hint:hover:not(:disabled) { background: rgb(255 255 255 / 0.18); }
+
+/* ── Fitting phones and desktops ── */
+/* Phones: the card already names the category, so the header's copy goes and the header stays on one row. */
+@media (max-width: 640px) {
+    #tag[data-cat] { display: none; }
+    .topbar { flex-wrap: nowrap; }
+    .topbar-end { gap: 6px; }
+}
+/* Short phones: smaller pictures, so the answers stay on screen without scrolling. */
+@media (max-width: 640px) and (max-height: 760px) {
+    .q-fig img { max-height: 22vh; }
+    .q-fig[data-kind="flag"] img { max-height: 17vh; }
+    .q-fig[data-kind="face"] img { width: 22vh; height: 22vh; }
+    .card { padding-block: 14px; }
+}
+/* "Confirm" under a long list stays in reach: it sticks to the bottom of the screen until the list ends. */
+.ta-go {
+    position: sticky;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    z-index: 2;
+}
+.ta-go:not(:disabled) { box-shadow: 0 var(--depth) 0 var(--base), 0 10px 24px rgb(0 0 0 / 0.35); }
+/* A confirm button still waiting for picks: muted, not a murky brown. */
+:is(.ta-go, .ord-row .next):disabled { opacity: 1; filter: saturate(0.25) brightness(0.7); }
+/* Desktop lobby: the rank and play button beside the daily card, wider tiles, instead of one long column. */
+@media (min-width: 720px) {
+    .tiles { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 960px) {
+    .lobby { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; max-width: 960px; align-content: start; }
+    .lobby > * { grid-column: 1 / -1; }
+    .lobby > .rank { grid-column: 1; grid-row: 2; }
+    .lobby > .big-play { grid-column: 1; grid-row: 3; justify-content: center; }
+    .lobby > .dcard { grid-column: 2; grid-row: 2 / span 2; margin-bottom: 8px; }
+    .cats { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+}
+
+/* Sort into two groups, as a card game (widgets.ts sortBox): a deck of cards dealt one at a time,
+   swiped or tapped into one of two chunky bins that keep what they get. */
+.sg { display: flex; flex-direction: column; gap: 12px; }
+.sg-dots { display: flex; justify-content: center; gap: 6px; }
+.sg-dots > span { width: 10px; height: 10px; border-radius: 50%; background: var(--glass-strong); transition: background 0.2s, transform 0.2s; }
+.sg-dots > .now { background: var(--gold); transform: scale(1.3); }
+.sg-dots > .hit { background: var(--right); }
+.sg-dots > .miss { background: var(--wrong); }
+.sg-stage { position: relative; display: grid; place-items: center; min-height: 128px; padding-bottom: 14px; }
+.sg-stage:has(.sg-flag) { min-height: 168px; }
+/* the cards still to come, peeking out under the current one */
+.sg-stage::before, .sg-stage::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: min(76%, 300px);
+    height: 70%;
+    border-radius: 22px;
+    background: rgb(255 255 255 / 0.22);
+    transform: translateX(-50%) scale(0.92);
+}
+.sg-stage::after { bottom: 7px; background: rgb(255 255 255 / 0.4); transform: translateX(-50%) scale(0.96); }
+.sg-stage[data-left="2"]::before, .sg-stage:is([data-left="1"], [data-left="0"])::before, .sg-stage:is([data-left="1"], [data-left="0"])::after { display: none; }
+.sg-card {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+    width: min(84%, 340px);
+    min-height: 96px;
+    padding: 16px 20px;
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 6px 0 #c7cceb, 0 14px 30px rgb(0 0 0 / 0.3);
+    color: var(--card-ink);
+    font-family: var(--game-font);
+    font-size: 1.35rem;
+    font-weight: 900;
+    line-height: 1.35;
+    text-align: center;
+    text-wrap: balance;
+    cursor: grab;
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: transform 0.3s cubic-bezier(0.3, 1.5, 0.6, 1), box-shadow 0.2s;
+    animation: sg-in 0.32s cubic-bezier(0.3, 1.4, 0.6, 1) both;
+}
+.sg-card.held { cursor: grabbing; transition: none; box-shadow: 0 6px 0 #c7cceb, 0 22px 40px rgb(0 0 0 / 0.4); }
+.sg-card img { display: block; max-width: 100%; height: 84px; object-fit: contain; border-radius: 6px; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.1); pointer-events: none; }
+.sg-flag { font-size: 1.15rem; }
+.sg-card.bad { box-shadow: 0 6px 0 var(--game-red-base), 0 0 0 4px var(--wrong); animation: shake 0.4s linear; }
+@keyframes sg-in { from { opacity: 0; transform: translateY(-18px) scale(0.9); } }
+.sg-score { margin: 0; font-family: var(--game-font); font-size: 3.4rem; font-weight: 900; color: var(--gold); font-variant-numeric: tabular-nums; animation: pop 0.4s ease; }
+.sg-score.ok { color: var(--right); }
+
+.sg-bins { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sg-bin {
+    --face: var(--purple);
+    --base: var(--purple-base);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    min-height: 112px;
+    margin-bottom: 6px;
+    padding: 12px 10px;
+    border: 0;
+    border-radius: 20px;
+    background: linear-gradient(color-mix(in srgb, var(--face), #fff 12%), var(--face));
+    box-shadow: 0 6px 0 var(--base);
+    color: #fff;
+    font-family: var(--game-font);
+    cursor: pointer;
+    transition: transform 0.12s cubic-bezier(0.3, 1.6, 0.6, 1), box-shadow 0.12s, filter 0.15s;
+}
+.sg-bin1 { --face: #26b5c6; --base: #1a7f8f; }
+.sg-bin:active:not(:disabled) { transform: translateY(6px); box-shadow: 0 0 0 var(--base); }
+.sg-bin:hover:not(:disabled) { filter: brightness(1.07); }
+.sg-bin:disabled { cursor: default; }
+.sg-bin.hot { transform: scale(1.05); filter: brightness(1.15); box-shadow: 0 6px 0 var(--base), 0 0 0 3px #fff; }
+.sg-bin.yes { animation: sg-yes 0.45s ease; }
+.sg-bin.took { animation: pop 0.35s ease; }
+.sg-bin.nope { animation: sg-nope 0.42s linear; }
+@keyframes sg-yes { 40% { transform: scale(1.06); box-shadow: 0 6px 0 var(--base), 0 0 0 4px var(--right), 0 0 24px var(--right); } }
+@keyframes sg-nope { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } 0%, 100% { box-shadow: 0 6px 0 var(--base), 0 0 0 4px var(--wrong); } }
+.sg-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sg-label { min-width: 0; font-size: 1.05rem; font-weight: 900; line-height: 1.25; text-align: start; }
+.sg-count { flex: none; min-width: 26px; padding: 2px 7px; border-radius: 999px; background: rgb(0 0 0 / 0.22); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.sg-pile { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 5px; }
+.sg-chip {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 100%;
+    padding: 3px;
+    border-radius: 8px;
+    background: rgb(0 0 0 / 0.2);
+    font-size: 0.75rem;
+    font-weight: 800;
+    line-height: 1.25;
+    animation: pop 0.3s ease;
+}
+.sg-chip img { display: block; height: 22px; border-radius: 3px; }
+.sg-chip-t { max-width: 100%; padding: 1px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-chip:has(.sg-chip-t) { width: 100%; box-sizing: border-box; }
+.sg-chip small { font-size: 0.7rem; opacity: 0.85; }
+.sg-chip.miss { box-shadow: inset 0 0 0 2px var(--wrong); background: rgb(245 84 92 / 0.35); }
+.sg-tip { margin: 0; text-align: center; font-size: 0.85rem; color: var(--ink-muted); }
+.sg-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* an empty bin shows where cards land */
+.sg-pile:empty { min-height: 40px; border: 2px dashed rgb(255 255 255 / 0.35); border-radius: 12px; }
+/* sorting has its own keys (← → or 1 2), told in its tip line */
+.play:has(.sg) .hint { display: none; }

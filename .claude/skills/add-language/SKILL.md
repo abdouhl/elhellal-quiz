@@ -32,7 +32,7 @@ Same shape as `src/data/en.json`, translated:
 
 - `pics`: one answer per picture in `src/data/pictures.json` (country names for flags, people's names, landmark names), using the language's standard names. Same length and order as `en.json`'s `pics`.
 - `events`: one per event in `src/data/numbers.json` (`events[i][0]`). Same order.
-- `metrics`: per metric, `more` / `less` (question pairs), `unit`, and `items` (country names), same order.
+- `metrics`: per metric, `more` / `less` (question pairs), `rank` ("rank these …, largest first"), `unit`, and `items` (country names), same order.
 - `bank`: build this with the helper so it stays aligned. Create the file with `"bank": []` plus the three sections above, then fill the bank the same way the `translate-quiz` skill does: `node scripts/quiz-data.mjs untranslated <lang> 100`, translate, `node scripts/quiz-data.mjs translate <lang> <file>`, and repeat. Use `skip` for Arabic-only rows (nearly all `lang` rows). Translate **every** translatable row; the site needs a full set to be worth launching. If a single session can't finish all of them, stop at a clean point and report how many are left. The user can carry on with the `translate-quiz` skill.
 
 Write all data through Node (`JSON.parse`/`JSON.stringify`) or the helper script, never with `sed`. The language files are minified, single-line JSON with a trailing newline.

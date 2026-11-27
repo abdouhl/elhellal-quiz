@@ -2,7 +2,7 @@
 import Layout from "../layouts/Layout.astro";
 import DisplayAd from "../components/DisplayAd.astro";
 import { CATEGORY_ICONS } from "../game/engine";
-import { SITE, categories, categoryIds, hubUrl, ogUrl, pageAlternates } from "../game/seo";
+import { SITE, categories, categoryIds, hubIndexJsonLd, hubUrl, ogUrl, pageAlternates } from "../game/seo";
 import { base, t } from "../i18n";
 import type { Lang } from "../i18n";
 import "../styles/quiz.css";
@@ -21,6 +21,7 @@ const total = cats.reduce((n, c) => n + categoryIds(lang, c).length, 0);
     ogImage={ogUrl(lang, "home")}
     alternates={pageAlternates((l) => `${base(l)}/c/`)}
 >
+    <script slot="head" type="application/ld+json" set:html={JSON.stringify(hubIndexJsonLd(lang))} />
     <main id="main-content" class="hub">
         <h1>{s.allH1}</h1>
         <p class="hub-intro">{s.allIntro(total, cats.length)}</p>

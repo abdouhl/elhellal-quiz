@@ -1,0 +1,27 @@
+---
+// Any unknown address: say so, in every language, and lead back into the game (never indexed).
+import Layout from "../layouts/Layout.astro";
+import { CATEGORY_ICONS } from "../game/engine";
+import { categories, hubTitle, hubUrl } from "../game/seo";
+import { DEFAULT_LANG, LANGS, base, t } from "../i18n";
+import "../styles/quiz.css";
+
+const lang = DEFAULT_LANG;
+const s = t(lang);
+---
+
+<Layout lang={lang} pageTitle={s.notFoundTitle} pageDescription={s.homeDesc} noindex>
+    <main id="main-content" class="hub">
+        <h1>🔭 {s.notFoundTitle.split(" — ")[0]}</h1>
+        <p class="hub-intro">{s.notFoundText}</p>
+        <a class="hub-play" href={`${base(lang)}/play/`}>{s.startQuiz}</a>
+        <ul class="hub-cats">
+            {categories(lang).map((c) => <li><a href={hubUrl(lang, c)}>{CATEGORY_ICONS[c]} {hubTitle(lang, c)}</a></li>)}
+        </ul>
+        {LANGS.filter((l) => l !== lang).map((l) => (
+            <p class="hub-intro" lang={l} dir={t(l).dir} style="margin-top: 24px">
+                {t(l).notFoundText} <a href={`${base(l)}/`}>{t(l).siteName}</a>
+            </p>
+        ))}
+    </main>
+</Layout>

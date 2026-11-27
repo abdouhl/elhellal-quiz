@@ -2,7 +2,8 @@
 // The lobby, as in the iOS app (Hellal/UI/HomeView.swift): the player's rank and rating, the big play
 // button, today's challenge with the week's streak, the game modes and the categories.
 // Rendered with neutral values; the script fills in what this browser has saved.
-import { CATEGORY_ICONS } from "../game/engine";
+import { CATEGORY_ICONS, QUESTION_TYPES } from "../game/engine";
+import { engines } from "../game/engines";
 import { categories } from "../game/seo";
 import { base, t } from "../i18n";
 import type { Lang } from "../i18n";
@@ -16,6 +17,7 @@ const { lang } = Astro.props;
 const s = t(lang);
 const play = `${base(lang)}/play/`;
 const cats = categories(lang);
+const types = QUESTION_TYPES.filter((c) => engines[lang].CATEGORIES.includes(c));
 ---
 
 <main id="main-content" class="app lobby">
@@ -98,6 +100,11 @@ const cats = categories(lang);
             <span class="tile-ico" aria-hidden="true">📚</span>
             <b>{s.allCategories}</b>
         </a>
+    </div>
+
+    <h2 class="lobby-h">{s.questionTypes}</h2>
+    <div class="cats">
+        {types.map((c) => <a class="cat" href={`${play}?cat=${c}`}><span aria-hidden="true">{CATEGORY_ICONS[c]}</span> {s.labels[c]}</a>)}
     </div>
 
     <h2 class="lobby-h">{s.categories}</h2>

@@ -43,6 +43,7 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
             {initial ? initial.text : s.loading}
         </h1>
         <p id="q-claim" class="q-claim" hidden={!initial?.claim}>{initial?.claim && s.quoted(initial.claim)}</p>
+        <p id="q-extra" class="q-extra" hidden></p>
     </section>
 
     <div id="opts" class="opts" role="group" aria-label={s.options}>
@@ -96,7 +97,7 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
     import type { Category, CategoryFilter, Question } from "../game/engine";
     import { adShowing, adsOn, breakDue, interstitial, noteBreak, offerReward, withdrawReward } from "../game/ads";
     import { track } from "../game/track";
-    import { SITE, countAnswer, fetchRates, haptic, home, keepAwake, loadEngine, markMissed, missedIds, num, proudMoment, recordAnswer, renderAnswers, reportQuestion, s, savedPictures, settleYear, shareCard, showClaim, showPicture, store, syncBadge, toast } from "../game/client";
+    import { SITE, clearEffect, countAnswer, fetchRates, haptic, home, keepAwake, loadEngine, markMissed, missedIds, num, proudMoment, recordAnswer, renderAnswers, reportQuestion, s, savedPictures, settleYear, shareCard, showClaim, showPicture, store, syncBadge, toast } from "../game/client";
     import { bestOf, difficulty, rate, rating, recordBest } from "../game/rating";
 
     const { createDeck, questionById, CATEGORIES } = await loadEngine();
@@ -260,6 +261,8 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
     if (category !== "all") {
         el.tag.hidden = false;
         el.tag.textContent = `${CATEGORY_ICONS[category]} ${s.labels[category]}`;
+        // the card already names the category: phones drop this copy to keep the header on one row
+        el.tag.dataset.cat = "";
     } else if (mode === "blitz") {
         el.tag.hidden = false;
         el.tag.textContent = "⚡";
@@ -461,6 +464,7 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
         if (locked || !question) return;
         locked = true;
         const q = question;
+        clearEffect();
         el.lifelines.hidden = true;
         withdrawReward();
         recordAnswer(q.id, ok);
@@ -515,9 +519,10 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
         if (endless) store.set("quiz.streak", String(streak));
         renderStats(ok);
 
-        el.feedback.textContent = [ok ? s.right : s.wrong, note].filter(Boolean).join(" · ");
+        el.feedback.textContent = [ok ? s.right : s.wrong, note].filter(Boolean).join(" — ");
         el.feedback.className = ok ? "feedback ok" : "feedback bad";
-        const reveal = q.reveal || (ok || q.year ? "" : s.correctIs(q.options[q.answer]));
+        // Questions without options (year, order, match…) show their answer in their own controls.
+        const reveal = q.reveal || (ok || !q.options.length ? "" : s.correctIs(q.options[q.answer]));
         el.reveal.textContent = reveal;
         prepareNext();
 
@@ -680,7 +685,8 @@ const initial = initialId ? engines[lang].questionById(initialId) : null;
         const idx = e.key.length === 1 ? Math.max("1234".indexOf(e.key), "١٢٣٤".indexOf(e.key)) : -1;
         if (idx >= 0) {
             const b = el.opts.children[idx] as HTMLButtonElement | undefined;
-            if (b && !b.disabled) answer(idx);
+            // only the option buttons: the interactive kinds (sort, match, number pad…) have their own keys
+            if (b?.matches(".opt") && !b.disabled) answer(idx);
         } else if ((e.key === "Enter" || e.key === " ") && locked && !(document.activeElement as HTMLElement | null)?.closest("button, a")) {
             e.preventDefault();
             proceed();

@@ -11,7 +11,7 @@ export interface Translation {
     bank: ([string, string, string[]] | null)[];
     pics: string[];
     events: string[];
-    metrics: { more: string; less: string; unit: string; items: string[] }[];
+    metrics: { more: string; less: string; unit: string; items: string[]; rank?: string }[];
 }
 
 const { events, metrics } = numbers as Pick<Content, "events" | "metrics">;

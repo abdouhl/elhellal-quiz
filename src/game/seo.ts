@@ -126,3 +126,42 @@ export function questionJsonLd(lang: Lang, q: Question): object[] {
         },
     ];
 }
+
+/** The publisher: elhellal.com, whose quiz this is. */
+const publisher = { "@type": "Organization", name: "Elhellal", url: "https://elhellal.com", logo: `${SITE}/icon-512.png` };
+
+/** schema.org WebSite (the site's name in search results) plus the publisher, for the home page. */
+export function siteJsonLd(lang: Lang): object[] {
+    const s = t(lang);
+    return [
+        { "@context": "https://schema.org", "@type": "WebSite", name: s.siteName, url: `${SITE}${homeUrl(lang)}`, inLanguage: lang, description: s.homeDesc, publisher },
+        { "@context": "https://schema.org", ...publisher },
+    ];
+}
+
+/** schema.org CollectionPage listing every category hub, plus its breadcrumb trail, for /c/. */
+export function hubIndexJsonLd(lang: Lang): object[] {
+    const s = t(lang);
+    const url = `${SITE}${base(lang)}/c/`;
+    return [
+        {
+            "@context": "https://schema.org",
+            "@type": "CollectionPage",
+            name: s.allH1,
+            url,
+            inLanguage: lang,
+            mainEntity: {
+                "@type": "ItemList",
+                itemListElement: categories(lang).map((c, i) => ({ "@type": "ListItem", position: i + 1, name: hubTitle(lang, c), url: `${SITE}${hubUrl(lang, c)}` })),
+            },
+        },
+        {
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+                { "@type": "ListItem", position: 1, name: s.siteName, item: `${SITE}${homeUrl(lang)}` },
+                { "@type": "ListItem", position: 2, name: s.footerAll, item: url },
+            ],
+        },
+    ];
+}
